@@ -1,83 +1,163 @@
-import { useState } from "react";
-import { Users, MoreVertical, Plus, Search, Mail, Shield, Wrench } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Users, MoreVertical, Plus, Search, Mail, Shield, Wrench, Trash2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { formatDistanceToNow } from "date-fns";
+import { nl } from "date-fns/locale";
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: "manager" | "technician";
+  role: "admin" | "manager" | "technician";
   status: "active" | "inactive";
   lastActive: string;
 }
 
 interface UsersViewProps {
   currentRole: "admin" | "manager" | "technician";
+  selectedOrganizationId?: string | null;
 }
 
-// Mock data for manager view (their own technicians)
-const mockManagerUsers: User[] = [
-  {
-    id: "1",
-    name: "Jan de Vries",
-    email: "jan@techcorp.nl",
-    role: "manager",
-    status: "active",
-    lastActive: "Nu online",
-  },
-  {
-    id: "2",
-    name: "Pieter Jansen",
-    email: "pieter@techcorp.nl",
-    role: "technician",
-    status: "active",
-    lastActive: "2 uur geleden",
-  },
-  {
-    id: "3",
-    name: "Klaas Bakker",
-    email: "klaas@techcorp.nl",
-    role: "technician",
-    status: "active",
-    lastActive: "1 dag geleden",
-  },
-  {
-    id: "4",
-    name: "Willem Smit",
-    email: "willem@techcorp.nl",
-    role: "technician",
-    status: "inactive",
-    lastActive: "1 week geleden",
-  },
-];
-
-// Mock data for admin view (all users across organizations)
-const mockAdminUsers: User[] = [
-  ...mockManagerUsers,
-  {
-    id: "5",
-    name: "Anna van Dijk",
-    email: "anna@buildright.nl",
-    role: "manager",
-    status: "active",
-    lastActive: "3 uur geleden",
-  },
-  {
-    id: "6",
-    name: "Erik Visser",
-    email: "erik@buildright.nl",
-    role: "technician",
-    status: "active",
-    lastActive: "30 min geleden",
-  },
-];
-
-const UsersView = ({ currentRole }: UsersViewProps) => {
+const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
+  const { user: currentAuthUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
+  const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "technician" as "manager" | "technician" });
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  const users = currentRole === "admin" ? mockAdminUsers : mockManagerUsers;
-  const currentUser = mockManagerUsers[0]; // First user is the manager themselves
+  // Use selected organization ID or fall back to user's organization
+  const effectiveOrgId = selectedOrganizationId || currentAuthUser?.organization_id || null;
+
+  // Load users
+  useEffect(() => {
+    loadUsers();
+  }, [currentRole, currentAuthUser, effectiveOrgId]);
+
+  const loadUsers = async () => {
+    if (!currentAuthUser) return;
+
+    try {
+      setLoading(true);
+      let query = supabase.from("users").select("*");
+
+      if (currentRole === "admin" && effectiveOrgId) {
+        // Admin sees users in selected organization
+        const { data: orgUsers } = await supabase
+          .from("user_organizations")
+          .select("user_id")
+          .eq("organization_id", effectiveOrgId);
+
+        if (orgUsers) {
+          const userIds = orgUsers.map((uo) => uo.user_id);
+          const { data, error } = await query.in("id", userIds).order("created_at", { ascending: false });
+          if (error) throw error;
+          if (data) {
+            setUsers(
+              data.map((u) => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role as "admin" | "manager" | "technician",
+                status: "active" as const,
+                lastActive: formatDistanceToNow(new Date(u.updated_at), { addSuffix: true, locale: nl }),
+              }))
+            );
+          }
+        } else {
+          setUsers([]);
+        }
+      } else if (effectiveOrgId) {
+        // Manager/Technician sees users in their organization
+        const { data: orgUsers } = await supabase
+          .from("user_organizations")
+          .select("user_id")
+          .eq("organization_id", effectiveOrgId);
+
+        if (orgUsers) {
+          const userIds = orgUsers.map((uo) => uo.user_id);
+          const { data, error } = await query.in("id", userIds).order("created_at", { ascending: false });
+          if (error) throw error;
+          if (data) {
+            setUsers(
+              data.map((u) => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role as "admin" | "manager" | "technician",
+                status: "active" as const,
+                lastActive: formatDistanceToNow(new Date(u.updated_at), { addSuffix: true, locale: nl }),
+              }))
+            );
+          }
+        } else {
+          setUsers([]);
+        }
+      } else {
+        setUsers([]);
+      }
+    } catch (error) {
+      console.error("Error loading users:", error);
+      toast({
+        title: "Fout",
+        description: "Kon gebruikers niet laden.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const currentUser = currentAuthUser
+    ? {
+        id: currentAuthUser.id,
+        name: currentAuthUser.name,
+        email: currentAuthUser.email,
+        role: currentAuthUser.role,
+        status: "active" as const,
+        lastActive: "Nu online",
+      }
+    : null;
 
   const filteredUsers = users.filter(
     (user) =>
@@ -86,6 +166,140 @@ const UsersView = ({ currentRole }: UsersViewProps) => {
   );
 
   const technicians = filteredUsers.filter((u) => u.role === "technician");
+
+  const handleAddUser = async () => {
+    if (!newUser.name || !newUser.email || !effectiveOrgId) {
+      toast({
+        title: "Velden verplicht",
+        description: "Vul alle verplichte velden in.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Note: In production, you would use Supabase Admin API (server-side)
+      // or send an invite email. For now, we'll create a placeholder user record
+      // that can be activated when they sign up with the same email.
+      
+      // Generate a temporary UUID for the user (they'll be created in auth when they sign up)
+      const tempId = crypto.randomUUID();
+
+      // Create user record (will be linked to auth.users when they sign up)
+      const { error: userError } = await supabase.from("users").insert({
+        id: tempId,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+      });
+
+      if (userError) {
+        // If user already exists, try to find them
+        const { data: existingUser } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", newUser.email)
+          .single();
+
+        if (existingUser) {
+          // Link existing user to organization
+          const { error: linkError } = await supabase.from("user_organizations").insert({
+            user_id: existingUser.id,
+            organization_id: effectiveOrgId,
+          });
+
+          if (linkError) throw linkError;
+        } else {
+          throw userError;
+        }
+      } else {
+        // Link new user to organization
+        const { error: linkError } = await supabase.from("user_organizations").insert({
+          user_id: tempId,
+          organization_id: effectiveOrgId,
+        });
+
+        if (linkError) throw linkError;
+      }
+
+      toast({
+        title: "Gebruiker toegevoegd",
+        description: `${newUser.name} is toegevoegd aan het team. Ze kunnen nu inloggen met hun email.`,
+      });
+
+      setAddUserDialogOpen(false);
+      setNewUser({ name: "", email: "", role: "technician" });
+      await loadUsers();
+    } catch (error: any) {
+      console.error("Error adding user:", error);
+      toast({
+        title: "Fout",
+        description: error.message || "Kon gebruiker niet toevoegen. Mogelijk bestaat de gebruiker al.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteUser = (user: User) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!userToDelete) return;
+
+    try {
+      // Delete user (this will cascade delete from user_organizations)
+      const { error } = await supabase.from("users").delete().eq("id", userToDelete.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Gebruiker verwijderd",
+        description: `${userToDelete.name} is verwijderd uit het team.`,
+      });
+
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      await loadUsers();
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      toast({
+        title: "Verwijderen mislukt",
+        description: error.message || "Er is een fout opgetreden.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditProfile = async () => {
+    if (!currentAuthUser) return;
+
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          name: currentAuthUser.name, // In production, get from form
+          email: currentAuthUser.email,
+        })
+        .eq("id", currentAuthUser.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Profiel bijgewerkt",
+        description: "Uw profiel is succesvol bijgewerkt.",
+      });
+      setEditProfileDialogOpen(false);
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
+      toast({
+        title: "Bijwerken mislukt",
+        description: error.message || "Er is een fout opgetreden.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div>
@@ -100,14 +314,14 @@ const UsersView = ({ currentRole }: UsersViewProps) => {
               : `${users.length} gebruikers totaal`}
           </p>
         </div>
-        <Button variant="hero">
+        <Button variant="hero" onClick={() => setAddUserDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           {currentRole === "manager" ? "Monteur Toevoegen" : "Gebruiker Toevoegen"}
         </Button>
       </div>
 
       {/* Manager's own account card */}
-      {currentRole === "manager" && (
+      {currentRole === "manager" && currentUser && (
         <div className="glass rounded-2xl p-5 mb-6 border-primary/30">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -125,7 +339,8 @@ const UsersView = ({ currentRole }: UsersViewProps) => {
               <p className="text-sm text-muted-foreground">{currentUser.email}</p>
               <p className="text-xs text-primary mt-1">{currentUser.lastActive}</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setEditProfileDialogOpen(true)}>
+              <Edit className="w-4 h-4 mr-2" />
               Profiel Bewerken
             </Button>
           </div>
@@ -153,7 +368,17 @@ const UsersView = ({ currentRole }: UsersViewProps) => {
 
       {/* Users List */}
       <div className="space-y-3">
-        {(currentRole === "manager" ? technicians : filteredUsers).map((user) => (
+        {loading ? (
+          <div className="glass rounded-xl p-8 text-center">
+            <p className="text-muted-foreground">Gebruikers laden...</p>
+          </div>
+        ) : (currentRole === "manager" ? technicians : filteredUsers).length === 0 ? (
+          <div className="glass rounded-xl p-8 text-center">
+            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Geen gebruikers gevonden</p>
+          </div>
+        ) : (
+          (currentRole === "manager" ? technicians : filteredUsers).map((user) => (
           <div
             key={user.id}
             className="glass rounded-xl p-4 flex items-center gap-4 hover:border-primary/30 transition-colors"
@@ -198,12 +423,131 @@ const UsersView = ({ currentRole }: UsersViewProps) => {
               </span>
             </div>
 
-            <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-              <MoreVertical className="w-4 h-4 text-muted-foreground" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
+                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleDeleteUser(user)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Verwijderen
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        ))}
+          ))
+        )}
       </div>
+
+      {/* Add User Dialog */}
+      <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{currentRole === "manager" ? "Monteur Toevoegen" : "Gebruiker Toevoegen"}</DialogTitle>
+            <DialogDescription>
+              Voeg een nieuwe {currentRole === "manager" ? "monteur" : "gebruiker"} toe aan het team.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Volledige naam</Label>
+              <Input
+                id="name"
+                value={newUser.name}
+                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                placeholder="Jan de Vries"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                placeholder="jan@voorbeeld.nl"
+              />
+            </div>
+            {currentRole === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="role">Rol</Label>
+                <Select value={newUser.role} onValueChange={(value: "manager" | "technician") => setNewUser({ ...newUser, role: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="technician">Monteur</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddUserDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button variant="hero" onClick={handleAddUser}>
+              Toevoegen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={editProfileDialogOpen} onOpenChange={setEditProfileDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Profiel Bewerken</DialogTitle>
+            <DialogDescription>Wijzig uw profielgegevens.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Volledige naam</Label>
+              <Input id="edit-name" defaultValue={currentUser.name} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input id="edit-email" type="email" defaultValue={currentUser.email} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-org">Organisatie</Label>
+              <Input id="edit-org" defaultValue={currentAuthUser?.organization || "VDL Technics"} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditProfileDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button variant="hero" onClick={handleEditProfile}>
+              Opslaan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gebruiker verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Weet je zeker dat je "{userToDelete?.name}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

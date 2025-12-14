@@ -1,59 +1,47 @@
-import { useState } from "react";
-import { FileText, Upload, Search, MoreVertical, File, FileImage, FileSpreadsheet } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { FileText, Upload, Search, MoreVertical, File, FileImage, FileSpreadsheet, Trash2, Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDistanceToNow } from "date-fns";
+import { nl } from "date-fns/locale";
+import { processDocumentForRAG, extractTextFromFile } from "@/lib/document-processing";
 
 interface Document {
   id: string;
   name: string;
   type: "pdf" | "docx" | "xlsx" | "image";
   size: string;
-  uploadedBy: string;
+  uploadedBy: string | null;
   uploadedAt: string;
+  file_url: string | null;
 }
-
-const mockDocuments: Document[] = [
-  {
-    id: "1",
-    name: "Installatiehandleiding Pomp Model X500",
-    type: "pdf",
-    size: "2.4 MB",
-    uploadedBy: "Jan de Vries",
-    uploadedAt: "2 dagen geleden",
-  },
-  {
-    id: "2",
-    name: "Technische Specificaties 2024",
-    type: "pdf",
-    size: "5.1 MB",
-    uploadedBy: "Jan de Vries",
-    uploadedAt: "1 week geleden",
-  },
-  {
-    id: "3",
-    name: "Onderhoudsschema Q1-Q4",
-    type: "xlsx",
-    size: "856 KB",
-    uploadedBy: "Jan de Vries",
-    uploadedAt: "2 weken geleden",
-  },
-  {
-    id: "4",
-    name: "Veiligheidsprotocollen",
-    type: "docx",
-    size: "1.2 MB",
-    uploadedBy: "Jan de Vries",
-    uploadedAt: "1 maand geleden",
-  },
-  {
-    id: "5",
-    name: "Schema Elektrische Aansluiting",
-    type: "image",
-    size: "3.8 MB",
-    uploadedBy: "Jan de Vries",
-    uploadedAt: "1 maand geleden",
-  },
-];
 
 const typeIcons = {
   pdf: FileText,
@@ -69,12 +57,293 @@ const typeColors = {
   image: "text-purple-400",
 };
 
-const DocumentsView = () => {
-  const [searchQuery, setSearchQuery] = useState("");
+interface DocumentsViewProps {
+  selectedOrganizationId?: string | null;
+}
 
-  const filteredDocuments = mockDocuments.filter((doc) =>
+const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
+  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  // Use selected organization ID or fall back to user's organization
+  const effectiveOrgId = selectedOrganizationId || user?.organization_id || null;
+
+  // Load documents
+  useEffect(() => {
+    if (effectiveOrgId) {
+      loadDocuments();
+    }
+  }, [effectiveOrgId]);
+
+  const loadDocuments = async () => {
+    if (!effectiveOrgId) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("documents")
+        .select(`
+          *,
+          users:uploaded_by (
+            name
+          )
+        `)
+        .eq("organization_id", effectiveOrgId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const formattedDocs: Document[] = data.map((doc: any) => {
+          // Determine file type from file_type
+          let type: "pdf" | "docx" | "xlsx" | "image" = "pdf";
+          if (doc.file_type.includes("word") || doc.file_type.includes("docx")) type = "docx";
+          else if (doc.file_type.includes("spreadsheet") || doc.file_type.includes("xlsx")) type = "xlsx";
+          else if (doc.file_type.includes("image")) type = "image";
+
+          // Format size
+          const sizeInMB = (doc.file_size / (1024 * 1024)).toFixed(1);
+          const sizeString = sizeInMB === "0.0" ? `${(doc.file_size / 1024).toFixed(0)} KB` : `${sizeInMB} MB`;
+
+          return {
+            id: doc.id,
+            name: doc.name,
+            type,
+            size: sizeString,
+            uploadedBy: doc.users?.name || "Onbekend",
+            uploadedAt: formatDistanceToNow(new Date(doc.created_at), { addSuffix: true, locale: nl }),
+            file_url: doc.file_url,
+          };
+        });
+        setDocuments(formattedDocs);
+      }
+    } catch (error) {
+      console.error("Error loading documents:", error);
+      toast({
+        title: "Fout",
+        description: "Kon documenten niet laden.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredDocuments = documents.filter((doc) =>
     doc.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleFileSelect = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0 || !effectiveOrgId || !user) return;
+
+    for (const file of Array.from(files)) {
+      // Validate file type
+      const validTypes = [
+        "text/plain", // .txt files
+        "text/markdown", // .md files
+        "text/csv", // .csv files
+        "application/json", // .json files
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+      ];
+      
+      // Also check file extension as fallback (some browsers don't set MIME type correctly)
+      const fileExt = file.name.split(".").pop()?.toLowerCase();
+      const validExtensions = ["txt", "md", "csv", "json", "pdf", "docx", "xlsx", "png", "jpg", "jpeg"];
+      
+      if (!validTypes.includes(file.type) && !validExtensions.includes(fileExt || "")) {
+        toast({
+          title: "Ongeldig bestandstype",
+          description: `${file.name} heeft een ongeldig type. Toegestaan: TXT, MD, CSV, JSON, PDF, DOCX, XLSX en afbeeldingen.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      // Validate file size (50MB max)
+      if (file.size > 50 * 1024 * 1024) {
+        toast({
+          title: "Bestand te groot",
+          description: `${file.name} is te groot. Maximum grootte is 50MB.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      try {
+        // Upload to Supabase Storage
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${effectiveOrgId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("documents")
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName);
+
+        // Save document metadata to database
+        const { data: savedDocument, error: dbError } = await supabase
+          .from("documents")
+          .insert({
+            organization_id: effectiveOrgId,
+            name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            file_url: urlData.publicUrl,
+            uploaded_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (dbError) throw dbError;
+
+        // Track analytics
+        await supabase.from("analytics").insert({
+          organization_id: effectiveOrgId,
+          event_type: "document_uploaded",
+          event_data: { file_name: file.name, file_size: file.size },
+        });
+
+        toast({
+          title: "Document geüpload",
+          description: `${file.name} is succesvol geüpload. Verwerking voor RAG wordt gestart...`,
+        });
+
+        // Process document for RAG (chunking + embeddings) in background
+        if (savedDocument) {
+          // Try to extract text and process for RAG
+          try {
+            const textContent = await extractTextFromFile(file);
+            console.log('Extracted text length:', textContent?.length || 0);
+            
+            if (textContent && textContent.trim().length > 0) {
+              console.log('Calling Edge Function for RAG processing...');
+              // Process in background (don't wait for completion)
+              processDocumentForRAG(savedDocument.id, textContent, effectiveOrgId)
+                .then(() => {
+                  console.log('RAG processing completed successfully');
+                  toast({
+                    title: "Document verwerkt",
+                    description: `${file.name} is verwerkt en klaar voor gebruik in RAG.`,
+                  });
+                })
+                .catch((error) => {
+                  console.error("Error processing document for RAG:", error);
+                  toast({
+                    title: "Waarschuwing",
+                    description: `Document geüpload, maar RAG verwerking mislukt: ${error.message || 'Onbekende fout'}. Check de browser console voor details.`,
+                    variant: "destructive",
+                  });
+                });
+            } else {
+              console.warn("No text content extracted from file:", file.name, file.type);
+              toast({
+                title: "Document geüpload",
+                description: `${file.name} is geüpload, maar kan niet worden verwerkt voor RAG. ${file.type.includes('xlsx') || file.type.includes('docx') || file.type.includes('pdf') ? 'Dit bestandstype vereist een speciale parser.' : 'Bestandstype niet ondersteund voor text extractie.'}`,
+                variant: "default",
+              });
+            }
+          } catch (extractError: any) {
+            console.error("Could not extract text from file:", extractError);
+            toast({
+              title: "Text extractie mislukt",
+              description: `${file.name} is geüpload, maar text extractie mislukt: ${extractError.message || 'Onbekende fout'}.`,
+              variant: "destructive",
+            });
+          }
+        }
+
+        // Reload documents
+        await loadDocuments();
+      } catch (error: any) {
+        console.error("Error uploading file:", error);
+        toast({
+          title: "Upload mislukt",
+          description: error.message || "Er is een fout opgetreden bij het uploaden.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    setUploadDialogOpen(false);
+  }, [toast, user, effectiveOrgId]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFileSelect(e.dataTransfer.files);
+  };
+
+  const handleDelete = (doc: Document) => {
+    setDocumentToDelete(doc);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!documentToDelete || !effectiveOrgId) return;
+
+    try {
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from("documents")
+        .delete()
+        .eq("id", documentToDelete.id)
+        .eq("organization_id", effectiveOrgId);
+
+      if (dbError) throw dbError;
+
+      // Delete from storage if URL exists
+      if (documentToDelete.file_url) {
+        const fileName = documentToDelete.file_url.split("/").pop();
+        if (fileName) {
+          await supabase.storage
+            .from("documents")
+            .remove([`${effectiveOrgId}/${fileName}`]);
+        }
+      }
+
+      toast({
+        title: "Document verwijderd",
+        description: `${documentToDelete.name} is verwijderd.`,
+      });
+
+      setDeleteDialogOpen(false);
+      setDocumentToDelete(null);
+      await loadDocuments();
+    } catch (error: any) {
+      console.error("Error deleting document:", error);
+      toast({
+        title: "Verwijderen mislukt",
+        description: error.message || "Er is een fout opgetreden.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div>
@@ -84,10 +353,10 @@ const DocumentsView = () => {
             Documenten
           </h1>
           <p className="text-muted-foreground">
-            {mockDocuments.length} documenten in jouw organisatie
+            {documents.length} documenten in jouw organisatie
           </p>
         </div>
-        <Button variant="hero">
+        <Button variant="hero" onClick={() => setUploadDialogOpen(true)}>
           <Upload className="w-4 h-4 mr-2" />
           Document Uploaden
         </Button>
@@ -105,7 +374,23 @@ const DocumentsView = () => {
       </div>
 
       {/* Upload Area */}
-      <div className="glass rounded-2xl p-8 mb-6 border-dashed border-2 border-border/50 hover:border-primary/50 transition-colors cursor-pointer">
+      <div
+        className={`glass rounded-2xl p-8 mb-6 border-dashed border-2 transition-colors cursor-pointer ${
+          isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+          className="hidden"
+          onChange={(e) => handleFileSelect(e.target.files)}
+        />
         <div className="flex flex-col items-center text-center">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
             <Upload className="w-7 h-7 text-primary" />
@@ -117,40 +402,88 @@ const DocumentsView = () => {
             of klik om te bladeren
           </p>
           <p className="text-xs text-muted-foreground">
-            PDF, DOCX, XLSX, PNG, JPG (max. 50MB)
+            TXT, MD, CSV, JSON, PDF, DOCX, XLSX, PNG, JPG (max. 50MB)
           </p>
         </div>
       </div>
 
       {/* Documents List */}
       <div className="space-y-3">
-        {filteredDocuments.map((doc) => {
-          const IconComponent = typeIcons[doc.type];
-          return (
-            <div
-              key={doc.id}
-              className="glass rounded-xl p-4 flex items-center gap-4 hover:border-primary/30 transition-colors"
-            >
-              <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                <IconComponent className={`w-5 h-5 ${typeColors[doc.type]}`} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-foreground truncate">{doc.name}</h4>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <span>{doc.size}</span>
-                  <span>•</span>
-                  <span>{doc.uploadedAt}</span>
+        {loading ? (
+          <div className="glass rounded-xl p-8 text-center">
+            <p className="text-muted-foreground">Documenten laden...</p>
+          </div>
+        ) : filteredDocuments.length === 0 ? (
+          <div className="glass rounded-xl p-8 text-center">
+            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Geen documenten gevonden</p>
+          </div>
+        ) : (
+          filteredDocuments.map((doc) => {
+            const IconComponent = typeIcons[doc.type];
+            return (
+              <div
+                key={doc.id}
+                className="glass rounded-xl p-4 flex items-center gap-4 hover:border-primary/30 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                  <IconComponent className={`w-5 h-5 ${typeColors[doc.type]}`} />
                 </div>
-              </div>
 
-              <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-                <MoreVertical className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-          );
-        })}
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-foreground truncate">{doc.name}</h4>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span>{doc.size}</span>
+                    <span>•</span>
+                    <span>{doc.uploadedAt}</span>
+                    <span>•</span>
+                    <span>{doc.uploadedBy}</span>
+                  </div>
+                </div>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
+                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => toast({ title: "Download", description: "Download functionaliteit wordt geïmplementeerd." })}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Downloaden
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleDelete(doc)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Verwijderen
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            );
+          })
+        )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Document verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Weet je zeker dat je "{documentToDelete?.name}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

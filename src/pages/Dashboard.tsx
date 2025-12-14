@@ -1,6 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Bot,
   MessageSquare,
@@ -13,15 +20,20 @@ import {
   CreditCard,
   Building,
   Menu,
+  Coins,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import OrganizationsView from "@/components/dashboard/OrganizationsView";
 import UsersView from "@/components/dashboard/UsersView";
 import AnalyticsView from "@/components/dashboard/AnalyticsView";
 import DocumentsView from "@/components/dashboard/DocumentsView";
-
-// Simulated user role - will come from auth
-type UserRole = "admin" | "manager" | "technician";
+import BillingView from "@/components/dashboard/BillingView";
+import SettingsView from "@/components/dashboard/SettingsView";
+import TokenUsageView from "@/components/dashboard/TokenUsageView";
+import { useAuth, UserRole } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
+import { generateEmbedding, generateAIResponse } from "@/lib/openai";
 
 interface Message {
   id: string;
@@ -30,40 +42,252 @@ interface Message {
 }
 
 const Dashboard = () => {
+  const { user, logout, loading } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentRole] = useState<UserRole>("technician"); // Will come from auth
   const [activeTab, setActiveTab] = useState("chat");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Welkom bij TechRAG! Stel gerust een vraag over uw technische documentatie.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
+  const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  // Redirect naar login als niet ingelogd
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/auth");
+    }
+  }, [user, loading, navigate]);
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: inputValue,
-    };
+  // Load organizations for admin selector
+  useEffect(() => {
+    if (user?.role === "admin") {
+      loadOrganizations();
+    }
+  }, [user?.role]);
 
-    setMessages([...messages, userMessage]);
-    setInputValue("");
+  const loadOrganizations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name")
+        .order("name", { ascending: true });
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Dit is een placeholder antwoord. Verbind met Lovable Cloud om de volledige RAG-functionaliteit te activeren.",
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    }, 1000);
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setOrganizations(data);
+        // Set first organization as default if none selected
+        if (!adminSelectedOrgId) {
+          setAdminSelectedOrgId(data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading organizations:", error);
+    }
   };
+
+  // Get effective organization ID (selected org for admin, user's org for others)
+  const effectiveOrgId = user?.role === "admin" ? adminSelectedOrgId : user?.organization_id || null;
+
+  // Load chat messages
+  useEffect(() => {
+    if (effectiveOrgId && activeTab === "chat") {
+      loadMessages();
+    }
+  }, [effectiveOrgId, activeTab]);
+
+  const loadMessages = async () => {
+    if (!effectiveOrgId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("*")
+        .eq("organization_id", effectiveOrgId)
+        .order("created_at", { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setMessages(
+          data.map((msg) => ({
+            id: msg.id,
+            role: msg.role as "user" | "assistant",
+            content: msg.content,
+          }))
+        );
+      } else {
+        // Welcome message if no messages
+        setMessages([
+          {
+            id: "welcome",
+            role: "assistant",
+            content: "Welkom bij TechRAG! Stel gerust een vraag over uw technische documentatie.",
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error loading messages:", error);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !effectiveOrgId || isSending) return;
+
+    const userMessageContent = inputValue.trim();
+    setInputValue("");
+    setIsSending(true);
+
+    // Add user message to UI immediately
+    const userMessage: Message = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: userMessageContent,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    try {
+      // Save user message to database
+      const { data: savedMessage, error: saveError } = await supabase
+        .from("chat_messages")
+        .insert({
+          organization_id: effectiveOrgId,
+          user_id: user!.id,
+          role: "user",
+          content: userMessageContent,
+        })
+        .select()
+        .single();
+
+      if (saveError) throw saveError;
+
+      // Update message with real ID
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === userMessage.id ? { ...msg, id: savedMessage.id } : msg
+        )
+      );
+
+      // Track analytics with question text
+      await supabase.from("analytics").insert({
+        organization_id: effectiveOrgId,
+        event_type: "question_asked",
+        event_data: { 
+          question_text: userMessageContent,
+          question_length: userMessageContent.length 
+        },
+      });
+
+      // RAG: Generate embedding for question and search for relevant document sections
+      let context = "";
+      try {
+        const queryEmbedding = await generateEmbedding(
+          userMessageContent,
+          effectiveOrgId,
+          user!.id
+        );
+        
+        const { data: relevantSections, error: searchError } = await supabase.rpc(
+          'match_document_sections',
+          {
+            p_organization_id: effectiveOrgId,
+            query_embedding: queryEmbedding,
+            match_count: 5,
+            match_threshold: 0.7,
+          }
+        );
+
+        if (!searchError && relevantSections && relevantSections.length > 0) {
+          // Combine relevant sections as context
+          context = relevantSections
+            .map((section: any) => section.content)
+            .join('\n\n');
+        }
+      } catch (embeddingError) {
+        console.error('Error generating embedding or searching:', embeddingError);
+        // Continue without context if embedding fails
+      }
+
+      // Generate AI response with RAG context
+      try {
+        const aiResponse = await generateAIResponse(
+          userMessageContent,
+          context,
+          effectiveOrgId,
+          user!.id
+        );
+
+        const { data: aiMessage, error: aiError } = await supabase
+          .from("chat_messages")
+          .insert({
+            organization_id: effectiveOrgId,
+            role: "assistant",
+            content: aiResponse,
+          })
+          .select()
+          .single();
+
+        if (!aiError && aiMessage) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: aiMessage.id,
+              role: "assistant",
+              content: aiResponse,
+            },
+          ]);
+        }
+      } catch (aiError: any) {
+        console.error('Error generating AI response:', aiError);
+        // Fallback response
+        const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Zorg ervoor dat je OpenAI API key is ingesteld en dat er documenten zijn geüpload.";
+        
+        const { data: aiMessage } = await supabase
+          .from("chat_messages")
+          .insert({
+            organization_id: effectiveOrgId,
+            role: "assistant",
+            content: fallbackResponse,
+          })
+          .select()
+          .single();
+
+        if (aiMessage) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: aiMessage.id,
+              role: "assistant",
+              content: fallbackResponse,
+            },
+          ]);
+        }
+      } finally {
+        setIsSending(false);
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      toast({
+        title: "Fout",
+        description: "Er is een fout opgetreden bij het verzenden van je bericht.",
+        variant: "destructive",
+      });
+      setIsSending(false);
+    }
+  };
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Laden...</div>
+      </div>
+    );
+  }
+
+  const currentRole: UserRole = user.role;
 
   const menuItems = [
     { id: "chat", icon: MessageSquare, label: "Chat", roles: ["admin", "manager", "technician"] },
@@ -71,6 +295,7 @@ const Dashboard = () => {
     { id: "users", icon: Users, label: "Gebruikers", roles: ["admin", "manager"] },
     { id: "organizations", icon: Building, label: "Organisaties", roles: ["admin"] },
     { id: "analytics", icon: BarChart, label: "Analytics", roles: ["admin", "manager"] },
+    { id: "token-usage", icon: Coins, label: "Token Gebruik", roles: ["admin"] },
     { id: "billing", icon: CreditCard, label: "Facturatie", roles: ["admin", "manager"] },
     { id: "settings", icon: Settings, label: "Instellingen", roles: ["admin", "manager"] },
   ];
@@ -138,16 +363,22 @@ const Dashboard = () => {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground truncate">Demo Gebruiker</p>
+                <p className="font-medium text-foreground truncate">{user.name}</p>
                 <p className="text-xs text-muted-foreground capitalize">{currentRole}</p>
               </div>
             </div>
-            <Link to="/">
-              <Button variant="outline" size="sm" className="w-full">
-                <LogOut className="w-4 h-4 mr-2" />
-                Uitloggen
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                logout();
+                navigate("/auth");
+              }}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Uitloggen
+            </Button>
           </div>
         </div>
       </aside>
@@ -164,6 +395,28 @@ const Dashboard = () => {
           </span>
           <div className="w-10" />
         </header>
+
+        {/* Admin Organization Selector */}
+        {user?.role === "admin" && organizations.length > 0 && (
+          <div className="p-4 lg:p-8 pb-0 border-b border-border/30">
+            <div className="flex items-center gap-3">
+              <Building className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Bekijk als:</span>
+              <Select value={adminSelectedOrgId || ""} onValueChange={setAdminSelectedOrgId}>
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Selecteer organisatie" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
 
         {/* Content Area */}
         <div className="flex-1 p-4 lg:p-8">
@@ -210,56 +463,26 @@ const Dashboard = () => {
                   placeholder="Stel een vraag..."
                   className="flex-1"
                 />
-                <Button variant="hero" size="icon" onClick={handleSendMessage}>
+                <Button variant="hero" size="icon" onClick={handleSendMessage} disabled={isSending || !inputValue.trim()}>
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {activeTab === "documents" && <DocumentsView />}
+          {activeTab === "documents" && <DocumentsView selectedOrganizationId={effectiveOrgId} />}
 
-          {activeTab === "users" && <UsersView currentRole={currentRole} />}
+          {activeTab === "users" && <UsersView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />}
 
           {activeTab === "organizations" && <OrganizationsView />}
 
-          {activeTab === "analytics" && <AnalyticsView currentRole={currentRole} />}
+          {activeTab === "analytics" && <AnalyticsView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />}
 
-          {activeTab === "billing" && (
-            <div>
-              <h1 className="font-display text-2xl font-bold text-foreground mb-2">
-                Facturatie
-              </h1>
-              <p className="text-muted-foreground mb-6">
-                Beheer uw abonnement en facturen
-              </p>
+          {activeTab === "token-usage" && <TokenUsageView selectedOrganizationId={effectiveOrgId} />}
 
-              <div className="glass rounded-2xl p-8 text-center">
-                <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud en Stripe om facturatie te beheren.
-                </p>
-              </div>
-            </div>
-          )}
+          {activeTab === "billing" && <BillingView selectedOrganizationId={effectiveOrgId} />}
 
-          {activeTab === "settings" && (
-            <div>
-              <h1 className="font-display text-2xl font-bold text-foreground mb-2">
-                Instellingen
-              </h1>
-              <p className="text-muted-foreground mb-6">
-                Beheer uw account en voorkeuren
-              </p>
-
-              <div className="glass rounded-2xl p-8 text-center">
-                <Settings className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud om instellingen te beheren.
-                </p>
-              </div>
-            </div>
-          )}
+          {activeTab === "settings" && <SettingsView />}
         </div>
       </main>
     </div>

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Bot, ArrowLeft, Mail, Lock, User, Building } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -24,18 +25,64 @@ const Auth = () => {
     setIsLogin(searchParams.get("mode") !== "register");
   }, [searchParams]);
 
+  const { login, register, user, isAuthenticated } = useAuth();
+
+  // Redirect when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      toast({
+        title: "Welkom terug!",
+        description: "U bent succesvol ingelogd.",
+      });
+      navigate("/dashboard");
+    }
+  }, [isAuthenticated, user, navigate, toast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Placeholder - will be replaced with actual auth
-    setTimeout(() => {
-      toast({
-        title: isLogin ? "Welkom terug!" : "Account aangemaakt!",
-        description: "Backend is nog niet geconfigureerd. Klik op 'Connect Lovable Cloud' om te beginnen.",
-      });
-      setIsLoading(false);
-    }, 1000);
+    if (isLogin) {
+      // Login logica
+      const success = await login(formData.email, formData.password);
+      if (!success) {
+        toast({
+          title: "Inloggen mislukt",
+          description: "Ongeldige email of wachtwoord. Probeer het opnieuw.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      }
+      // Redirect wordt afgehandeld door useEffect boven
+    } else {
+      // Registratie logica
+      if (!formData.name || !formData.organization) {
+        toast({
+          title: "Velden verplicht",
+          description: "Vul alle velden in.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const success = await register(
+        formData.email,
+        formData.password,
+        formData.name,
+        formData.organization
+      );
+
+      if (!success) {
+        toast({
+          title: "Registratie mislukt",
+          description: "Er is iets misgegaan. Probeer het opnieuw.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      }
+      // Redirect wordt afgehandeld door useEffect boven
+    }
   };
 
   return (
@@ -166,6 +213,7 @@ const Auth = () => {
               {isLogin ? "Registreer hier" : "Log hier in"}
             </button>
           </p>
+
         </div>
       </div>
 

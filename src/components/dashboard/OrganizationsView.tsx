@@ -1,12 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Building, Users, FileText, MoreVertical, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { nl } from "date-fns/locale";
 
 interface Organization {
   id: string;
   name: string;
-  plan: "starter" | "professional" | "enterprise";
+  plan: "starter" | "professional";
   usersCount: number;
   documentsCount: number;
   createdAt: string;
@@ -16,7 +36,7 @@ const mockOrganizations: Organization[] = [
   {
     id: "1",
     name: "TechCorp Industries",
-    plan: "enterprise",
+    plan: "professional",
     usersCount: 45,
     documentsCount: 128,
     createdAt: "2024-01-15",
@@ -48,7 +68,7 @@ const mockOrganizations: Organization[] = [
   {
     id: "5",
     name: "ElectraFix Nederland",
-    plan: "enterprise",
+    plan: "professional",
     usersCount: 32,
     documentsCount: 89,
     createdAt: "2024-05-12",
@@ -58,13 +78,106 @@ const mockOrganizations: Organization[] = [
 const planColors = {
   starter: "bg-muted text-muted-foreground",
   professional: "bg-primary/20 text-primary",
-  enterprise: "bg-accent/20 text-accent",
 };
 
 const OrganizationsView = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOrgDialogOpen, setAddOrgDialogOpen] = useState(false);
+  const [newOrg, setNewOrg] = useState({ name: "", plan: "starter" as "starter" | "professional" });
+  const { toast } = useToast();
 
-  const filteredOrganizations = mockOrganizations.filter((org) =>
+  useEffect(() => {
+    loadOrganizations();
+  }, []);
+
+  const loadOrganizations = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        // Get counts for each organization
+        const orgsWithCounts = await Promise.all(
+          data.map(async (org) => {
+            const { count: usersCount } = await supabase
+              .from("user_organizations")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", org.id);
+
+            const { count: docsCount } = await supabase
+              .from("documents")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", org.id);
+
+            return {
+              id: org.id,
+              name: org.name,
+              plan: org.plan as "starter" | "professional",
+              usersCount: usersCount || 0,
+              documentsCount: docsCount || 0,
+              createdAt: format(new Date(org.created_at), "dd-MM-yyyy", { locale: nl }),
+            };
+          })
+        );
+
+        setOrganizations(orgsWithCounts);
+      }
+    } catch (error) {
+      console.error("Error loading organizations:", error);
+      toast({
+        title: "Fout",
+        description: "Kon organisaties niet laden.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddOrganization = async () => {
+    if (!newOrg.name) {
+      toast({
+        title: "Naam verplicht",
+        description: "Vul een organisatienaam in.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("organizations").insert({
+        name: newOrg.name,
+        plan: newOrg.plan,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Organisatie toegevoegd",
+        description: `${newOrg.name} is toegevoegd.`,
+      });
+
+      setAddOrgDialogOpen(false);
+      setNewOrg({ name: "", plan: "starter" });
+      await loadOrganizations();
+    } catch (error: any) {
+      console.error("Error adding organization:", error);
+      toast({
+        title: "Fout",
+        description: error.message || "Kon organisatie niet toevoegen.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredOrganizations = organizations.filter((org) =>
     org.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -76,10 +189,10 @@ const OrganizationsView = () => {
             Organisaties
           </h1>
           <p className="text-muted-foreground">
-            Beheer alle klantorganisaties ({mockOrganizations.length} totaal)
+            Beheer alle klantorganisaties ({organizations.length} totaal)
           </p>
         </div>
-        <Button variant="hero">
+        <Button variant="hero" onClick={() => setAddOrgDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Organisatie Toevoegen
         </Button>
@@ -98,7 +211,17 @@ const OrganizationsView = () => {
 
       {/* Organizations Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredOrganizations.map((org) => (
+        {loading ? (
+          <div className="col-span-full glass rounded-xl p-8 text-center">
+            <p className="text-muted-foreground">Organisaties laden...</p>
+          </div>
+        ) : filteredOrganizations.length === 0 ? (
+          <div className="col-span-full glass rounded-xl p-8 text-center">
+            <Building className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Geen organisaties gevonden</p>
+          </div>
+        ) : (
+          filteredOrganizations.map((org) => (
           <div
             key={org.id}
             className="glass rounded-2xl p-5 hover:border-primary/30 transition-colors cursor-pointer"
@@ -139,8 +262,53 @@ const OrganizationsView = () => {
               </div>
             </div>
           </div>
-        ))}
+          ))
+        )}
       </div>
+
+      {/* Add Organization Dialog */}
+      <Dialog open={addOrgDialogOpen} onOpenChange={setAddOrgDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Organisatie Toevoegen</DialogTitle>
+            <DialogDescription>Voeg een nieuwe organisatie toe aan het systeem.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="org-name">Organisatienaam</Label>
+              <Input
+                id="org-name"
+                value={newOrg.name}
+                onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
+                placeholder="TechCorp Industries"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="org-plan">Abonnement</Label>
+              <Select
+                value={newOrg.plan}
+                onValueChange={(value: "starter" | "professional") => setNewOrg({ ...newOrg, plan: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="starter">Starter - €99/maand</SelectItem>
+                  <SelectItem value="professional">Professional - €299/maand</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOrgDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button variant="hero" onClick={handleAddOrganization}>
+              Toevoegen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
