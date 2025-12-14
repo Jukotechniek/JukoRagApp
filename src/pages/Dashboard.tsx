@@ -9,14 +9,16 @@ import {
   Settings,
   LogOut,
   Send,
-  Upload,
   BarChart,
   CreditCard,
   Building,
   Menu,
-  X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import OrganizationsView from "@/components/dashboard/OrganizationsView";
+import UsersView from "@/components/dashboard/UsersView";
+import AnalyticsView from "@/components/dashboard/AnalyticsView";
+import DocumentsView from "@/components/dashboard/DocumentsView";
 
 // Simulated user role - will come from auth
 type UserRole = "admin" | "manager" | "technician";
@@ -215,101 +217,13 @@ const Dashboard = () => {
             </div>
           )}
 
-          {activeTab === "documents" && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h1 className="font-display text-2xl font-bold text-foreground">
-                    Documenten
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Beheer uw technische documentatie
-                  </p>
-                </div>
-                <Button variant="hero">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Document Uploaden
-                </Button>
-              </div>
+          {activeTab === "documents" && <DocumentsView />}
 
-              <div className="glass rounded-2xl p-8 text-center">
-                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud om documenten te uploaden en beheren.
-                </p>
-              </div>
-            </div>
-          )}
+          {activeTab === "users" && <UsersView currentRole={currentRole} />}
 
-          {activeTab === "users" && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h1 className="font-display text-2xl font-bold text-foreground">
-                    Gebruikers
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Beheer teamleden in uw organisatie
-                  </p>
-                </div>
-                <Button variant="hero">
-                  <Users className="w-4 h-4 mr-2" />
-                  Gebruiker Toevoegen
-                </Button>
-              </div>
+          {activeTab === "organizations" && <OrganizationsView />}
 
-              <div className="glass rounded-2xl p-8 text-center">
-                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud om gebruikers te beheren.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "organizations" && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h1 className="font-display text-2xl font-bold text-foreground">
-                    Organisaties
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Beheer alle klantorganisaties
-                  </p>
-                </div>
-                <Button variant="hero">
-                  <Building className="w-4 h-4 mr-2" />
-                  Organisatie Toevoegen
-                </Button>
-              </div>
-
-              <div className="glass rounded-2xl p-8 text-center">
-                <Building className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud om organisaties te beheren.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "analytics" && (
-            <div>
-              <h1 className="font-display text-2xl font-bold text-foreground mb-2">
-                Analytics
-              </h1>
-              <p className="text-muted-foreground mb-6">
-                Inzicht in gebruik en prestaties
-              </p>
-
-              <div className="glass rounded-2xl p-8 text-center">
-                <BarChart className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Verbind met Lovable Cloud om analytics te bekijken.
-                </p>
-              </div>
-            </div>
-          )}
+          {activeTab === "analytics" && <AnalyticsView currentRole={currentRole} />}
 
           {activeTab === "billing" && (
             <div>
