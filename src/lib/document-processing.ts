@@ -85,11 +85,6 @@ export async function processDocumentForRAG(
   organizationId: string
 ): Promise<void> {
   try {
-    console.log('Invoking Edge Function process-document with:', {
-      documentId,
-      contentLength: content.length,
-      organizationId,
-    });
 
     // Call Edge Function for processing (keeps API keys secure)
     const { data, error } = await supabase.functions.invoke('process-document', {
@@ -100,7 +95,6 @@ export async function processDocumentForRAG(
       },
     });
 
-    console.log('Edge Function response:', { data, error });
 
     if (error) {
       console.error('Error calling process-document function:', error);
@@ -132,7 +126,6 @@ export async function processDocumentForRAG(
       throw new Error(`Processing failed: ${errorMsg}`);
     }
 
-    console.log(`Successfully processed document ${documentId}: ${data.chunksProcessed} chunks created`);
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);
     throw new Error(`Failed to process document: ${error.message || error.toString()}`);
@@ -178,13 +171,11 @@ export async function extractTextFromFile(file: File): Promise<string> {
     // Return empty string - these file types need proper parsing
     // The document will be uploaded but not processed for RAG
     // You can implement proper parsing later
-    console.warn(`File type ${file.type} requires proper parsing. Document uploaded but not processed for RAG.`);
     return '';
   }
 
   // For images, return empty (you might want OCR later)
   if (file.type.startsWith('image/')) {
-    console.warn('Image files cannot be processed for text extraction without OCR.');
     return '';
   }
 

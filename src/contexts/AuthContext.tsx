@@ -33,12 +33,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Load user session on mount
   useEffect(() => {
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout;
+    let sessionLoaded = false; // Track if we've already loaded from getSession
+
+    // Set a timeout to ensure loading doesn't hang forever
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      
+      clearTimeout(timeoutId);
+      
+      if (error) {
+        setLoading(false);
+        return;
+      }
+
       if (session?.user) {
+        sessionLoaded = true; // Mark that we're loading from getSession
         setSupabaseUser(session.user);
-        loadUserData(session.user.id);
+        // Only load if not already loading
+        if (!(loadUserData as any).inProgress) {
+          loadUserData(session.user.id).catch((err) => {
+            if (mounted) {
+              setLoading(false);
+            }
+          });
+        }
       } else {
+        setLoading(false);
+      }
+    }).catch((error) => {
+      if (mounted) {
+        clearTimeout(timeoutId);
         setLoading(false);
       }
     });
@@ -47,9 +80,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
+      // Ignore initial SIGNED_IN event if we're already loading from getSession
+      // This prevents duplicate loadUserData calls when both getSession and onAuthStateChange fire
+      if (event === 'SIGNED_IN' && sessionLoaded) {
+        return;
+      }
+      
+      clearTimeout(timeoutId);
+      
       if (session?.user) {
         setSupabaseUser(session.user);
-        await loadUserData(session.user.id);
+        // Only load if not already loading
+        if (!(loadUserData as any).inProgress) {
+          try {
+            await loadUserData(session.user.id);
+          } catch (error) {
+            setLoading(false);
+          }
+        }
       } else {
         setSupabaseUser(null);
         setUser(null);
@@ -57,10 +107,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadUserData = async (userId: string) => {
+    // Prevent multiple simultaneous calls - check and set immediately
+    if ((loadUserData as any).inProgress) {
+      return;
+    }
+    
+    // Set flag immediately to prevent concurrent calls
+    (loadUserData as any).inProgress = true;
+    
     try {
       setLoading(true);
       
@@ -68,7 +130,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data: authUser, error: authError } = await supabase.auth.getUser();
       
       if (authError || !authUser?.user) {
-        console.error("Error getting auth user:", authError);
         setLoading(false);
         return;
       }
@@ -84,8 +145,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If user doesn't exist in database, create it
       if (!userData && !userError) {
         // No error but no data = user doesn't exist
-        console.log("User not found in database, creating basic entry...");
-        
         const { error: createError } = await supabase.from("users").insert({
           id: authUser.user.id,
           email: authUser.user.email || "",
@@ -94,7 +153,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         if (createError) {
-          console.error("Error creating user entry:", createError);
           // If creation fails, use auth data as fallback
           setUser({
             id: authUser.user.id,
@@ -117,13 +175,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .maybeSingle();
 
         if (newUserData) {
-          // Load organization data
-          const { data: orgData } = await supabase
+          // Load organization data with timeout
+          const orgDataPromise = supabase
             .from("user_organizations")
             .select("organization_id, organizations(*)")
             .eq("user_id", newUserData.id)
             .limit(1)
             .maybeSingle();
+
+          const timeoutPromise = new Promise((resolve) => 
+            setTimeout(() => resolve({ data: null, error: null }), 3000)
+          );
+
+          const { data: orgData } = await Promise.race([
+            orgDataPromise,
+            timeoutPromise,
+          ]) as { data: any; error: any };
 
           const org = orgData?.organizations as any;
 
@@ -143,7 +210,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Handle errors
       if (userError) {
-        console.error("Error loading user from database:", userError);
         // Use auth data as fallback
         if (authUser.user) {
           setUser({
@@ -162,12 +228,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (userData) {
         // Get first organization (users typically belong to one org)
-        const { data: orgData } = await supabase
+        // Add timeout to prevent hanging
+        const orgDataPromise = supabase
           .from("user_organizations")
           .select("organization_id, organizations(*)")
           .eq("user_id", userData.id)
           .limit(1)
           .maybeSingle();
+
+        const timeoutPromise = new Promise((resolve) => 
+          setTimeout(() => resolve({ data: null, error: null }), 3000)
+        );
+
+        const { data: orgData } = await Promise.race([
+          orgDataPromise,
+          timeoutPromise,
+        ]) as { data: any; error: any };
 
         // orgError is OK - user might not have an organization yet
         const org = orgData?.organizations as any;
@@ -181,6 +257,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           organization_name: org?.name || null,
           organization_plan: org?.plan || null,
         });
+        
+        // Explicitly set loading to false after setting user
+        setLoading(false);
+        return;
       } else {
         // No user data and no error - use auth data as fallback
         if (authUser.user) {
@@ -194,9 +274,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             organization_plan: null,
           });
         }
+        // Explicitly set loading to false
+        setLoading(false);
+        return;
       }
     } catch (error) {
-      console.error("Error loading user data:", error);
       // Always set loading to false, even on error
       // Use auth data as fallback
       const { data: authUser } = await supabase.auth.getUser();
@@ -212,9 +294,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     } finally {
+      (loadUserData as any).inProgress = false;
       setLoading(false);
     }
   };
+  
+  // Add flag to prevent concurrent calls
+  (loadUserData as any).inProgress = false;
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {

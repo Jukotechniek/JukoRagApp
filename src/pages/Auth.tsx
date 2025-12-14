@@ -25,18 +25,18 @@ const Auth = () => {
     setIsLogin(searchParams.get("mode") !== "register");
   }, [searchParams]);
 
-  const { login, register, user, isAuthenticated } = useAuth();
+  const { login, register, user, isAuthenticated, loading } = useAuth();
 
-  // Redirect when authenticated
+  // Redirect when authenticated (but wait for loading to finish)
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (!loading && isAuthenticated && user) {
       toast({
         title: "Welkom terug!",
         description: "U bent succesvol ingelogd.",
       });
       navigate("/dashboard");
     }
-  }, [isAuthenticated, user, navigate, toast]);
+  }, [isAuthenticated, user, loading, navigate, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

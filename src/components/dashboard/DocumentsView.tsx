@@ -67,7 +67,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,7 +125,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         setDocuments(formattedDocs);
       }
     } catch (error) {
-      console.error("Error loading documents:", error);
       toast({
         title: "Fout",
         description: "Kon documenten niet laden.",
@@ -229,29 +227,24 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           // Try to extract text and process for RAG
           try {
             const textContent = await extractTextFromFile(file);
-            console.log('Extracted text length:', textContent?.length || 0);
             
             if (textContent && textContent.trim().length > 0) {
-              console.log('Calling Edge Function for RAG processing...');
               // Process in background (don't wait for completion)
               processDocumentForRAG(savedDocument.id, textContent, effectiveOrgId)
                 .then(() => {
-                  console.log('RAG processing completed successfully');
                   toast({
                     title: "Document verwerkt",
                     description: `${file.name} is verwerkt en klaar voor gebruik in RAG.`,
                   });
                 })
                 .catch((error) => {
-                  console.error("Error processing document for RAG:", error);
                   toast({
                     title: "Waarschuwing",
-                    description: `Document geüpload, maar RAG verwerking mislukt: ${error.message || 'Onbekende fout'}. Check de browser console voor details.`,
+                    description: `Document geüpload, maar RAG verwerking mislukt: ${error.message || 'Onbekende fout'}.`,
                     variant: "destructive",
                   });
                 });
             } else {
-              console.warn("No text content extracted from file:", file.name, file.type);
               toast({
                 title: "Document geüpload",
                 description: `${file.name} is geüpload, maar kan niet worden verwerkt voor RAG. ${file.type.includes('xlsx') || file.type.includes('docx') || file.type.includes('pdf') ? 'Dit bestandstype vereist een speciale parser.' : 'Bestandstype niet ondersteund voor text extractie.'}`,
@@ -259,7 +252,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
               });
             }
           } catch (extractError: any) {
-            console.error("Could not extract text from file:", extractError);
             toast({
               title: "Text extractie mislukt",
               description: `${file.name} is geüpload, maar text extractie mislukt: ${extractError.message || 'Onbekende fout'}.`,
@@ -271,7 +263,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         // Reload documents
         await loadDocuments();
       } catch (error: any) {
-        console.error("Error uploading file:", error);
         toast({
           title: "Upload mislukt",
           description: error.message || "Er is een fout opgetreden bij het uploaden.",
@@ -279,8 +270,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         });
       }
     }
-
-    setUploadDialogOpen(false);
   }, [toast, user, effectiveOrgId]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -336,7 +325,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       setDocumentToDelete(null);
       await loadDocuments();
     } catch (error: any) {
-      console.error("Error deleting document:", error);
       toast({
         title: "Verwijderen mislukt",
         description: error.message || "Er is een fout opgetreden.",
@@ -356,7 +344,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             {documents.length} documenten in jouw organisatie
           </p>
         </div>
-        <Button variant="hero" onClick={() => setUploadDialogOpen(true)}>
+        <Button variant="hero" onClick={() => fileInputRef.current?.click()}>
           <Upload className="w-4 h-4 mr-2" />
           Document Uploaden
         </Button>

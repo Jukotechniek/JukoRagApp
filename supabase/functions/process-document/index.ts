@@ -130,8 +130,6 @@ serve(async (req) => {
       );
     }
 
-    console.log('Supabase URL:', supabaseUrl ? 'configured' : 'missing');
-    console.log('Service Role Key:', supabaseServiceKey ? 'configured' : 'missing');
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -179,7 +177,6 @@ serve(async (req) => {
       );
     }
 
-    console.log('Processing document:', { documentId, contentLength: content.length, organizationId });
 
     // 1. Split document into chunks
     const chunks = splitIntoChunks(content, {
@@ -196,7 +193,6 @@ serve(async (req) => {
 
     // 2. Generate embeddings for all chunks (batch processing)
     const texts = chunks.map(chunk => chunk.text);
-    console.log(`Generating embeddings for ${texts.length} chunks...`);
     
     // OpenAI allows up to 2048 inputs per batch, but we'll do smaller batches for safety
     const embeddingBatchSize = 100;
@@ -206,7 +202,6 @@ serve(async (req) => {
     try {
       for (let i = 0; i < texts.length; i += embeddingBatchSize) {
         const batch = texts.slice(i, i + embeddingBatchSize);
-        console.log(`Generating embeddings for batch ${Math.floor(i / embeddingBatchSize) + 1}/${Math.ceil(texts.length / embeddingBatchSize)}`);
         
         const response = await openai.embeddings.create({
           model: 'text-embedding-3-small',
@@ -220,14 +215,14 @@ serve(async (req) => {
           totalEmbeddingTokens += response.usage.total_tokens;
         }
       }
-      console.log(`Successfully generated ${allEmbeddings.length} embeddings`);
       
       // Track token usage for document processing
       if (totalEmbeddingTokens > 0) {
-        // Calculate cost (text-embedding-3-small: $0.02 per 1M tokens)
-        const cost = (totalEmbeddingTokens / 1000000.0) * 0.02;
+        // Calculate cost in EUR (text-embedding-3-small: €0.0184 per 1M tokens)
+        // Using database function which returns EUR
+        const costUsd = (totalEmbeddingTokens / 1000000.0) * 0.02;
+        const costEur = costUsd * 0.92; // Convert USD to EUR
         
-        console.log(`Tracking token usage: ${totalEmbeddingTokens} tokens, cost: $${cost}`);
         
         const { data: tokenUsageData, error: tokenUsageError } = await supabase
           .from('token_usage')
@@ -239,7 +234,7 @@ serve(async (req) => {
             prompt_tokens: totalEmbeddingTokens,
             completion_tokens: 0,
             total_tokens: totalEmbeddingTokens,
-            cost_usd: cost,
+            cost_usd: costEur, // Stored as EUR (column name kept as cost_usd for compatibility)
             metadata: {
               document_id: documentId,
               chunks_processed: chunks.length,
@@ -252,7 +247,6 @@ serve(async (req) => {
           console.error('Error inserting token usage:', tokenUsageError);
           // Don't fail the whole operation, but log the error
         } else {
-          console.log('Successfully tracked token usage:', tokenUsageData);
         }
       }
     } catch (embeddingError: any) {
@@ -278,11 +272,9 @@ serve(async (req) => {
     }));
 
     // 4. Insert sections in batches to avoid overwhelming the database
-    console.log(`Inserting ${sectionsToInsert.length} sections into database...`);
     const dbBatchSize = 10;
     for (let i = 0; i < sectionsToInsert.length; i += dbBatchSize) {
       const batch = sectionsToInsert.slice(i, i + dbBatchSize);
-      console.log(`Inserting batch ${Math.floor(i / dbBatchSize) + 1}/${Math.ceil(sectionsToInsert.length / dbBatchSize)}`);
       
       const { error } = await supabase
         .from('document_sections')
@@ -300,7 +292,6 @@ serve(async (req) => {
         );
       }
     }
-    console.log('Successfully inserted all sections');
 
     return new Response(
       JSON.stringify({

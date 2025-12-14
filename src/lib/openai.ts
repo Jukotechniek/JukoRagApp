@@ -27,6 +27,7 @@ async function trackTokenUsage(
   metadata?: Record<string, any>
 ) {
   try {
+
     // Calculate cost using database function
     const { data: costData, error: costError } = await supabase.rpc('calculate_token_cost', {
       p_model: model,
@@ -34,22 +35,40 @@ async function trackTokenUsage(
       p_completion_tokens: completionTokens,
     });
 
+    if (costError) {
+      console.error('Error calculating token cost:', costError);
+    }
+
     const cost = costError ? 0 : (costData || 0);
 
-    await supabase.from('token_usage').insert({
-      organization_id: organizationId,
-      user_id: userId,
-      model,
-      operation_type: operationType,
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: totalTokens,
-      cost_usd: cost,
-      metadata: metadata || null,
-    });
-  } catch (error) {
+    const { data: insertData, error: insertError } = await supabase
+      .from('token_usage')
+      .insert({
+        organization_id: organizationId,
+        user_id: userId,
+        model,
+        operation_type: operationType,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        cost_usd: cost,
+        metadata: metadata || null,
+      })
+      .select();
+
+    if (insertError) {
+      console.error('Error inserting token usage:', insertError);
+      console.error('Insert error details:', {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+      });
+    } else {
+    }
+  } catch (error: any) {
     // Don't throw - token tracking shouldn't break the main flow
-    console.error('Error tracking token usage:', error);
+      // Error tracking token usage - silently fail
   }
 }
 

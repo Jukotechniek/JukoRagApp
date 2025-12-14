@@ -129,7 +129,7 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("nl-NL", {
       style: "currency",
-      currency: "USD",
+      currency: "EUR",
       minimumFractionDigits: 4,
       maximumFractionDigits: 6,
     }).format(amount);
