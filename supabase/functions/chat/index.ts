@@ -41,6 +41,7 @@ interface ChatHistoryItem {
 async function loadChatHistory(
   supabase: ReturnType<typeof createClient>,
   organizationId: string,
+  conversationId: string,
   limit = 6
 ): Promise<ChatHistoryItem[]> {
   try {
@@ -48,6 +49,7 @@ async function loadChatHistory(
       .from('chat_messages')
       .select('role, content')
       .eq('organization_id', organizationId)
+      .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
       .limit(limit);
 
@@ -532,7 +534,7 @@ serve(async (req) => {
       );
     }
 
-    const { question, organizationId, userId } = await req.json();
+    const { question, organizationId, userId, conversationId } = await req.json();
 
     if (!question || !organizationId) {
       return new Response(
@@ -579,9 +581,13 @@ serve(async (req) => {
       question: String(question).substring(0, 150),
       organizationId,
       userId: effectiveUserId,
+      conversationId,
     });
-
-    const history = await loadChatHistory(supabase, organizationId);
+    
+    const history =
+      typeof conversationId === 'string' && conversationId.length > 0
+        ? await loadChatHistory(supabase, organizationId, conversationId)
+        : [];
 
     const category = await classifyQuestion(question, openai);
     console.log('[Chat] Classified category:', category);

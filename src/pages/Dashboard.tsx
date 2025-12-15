@@ -53,6 +53,7 @@ const Dashboard = () => {
   const [isClearing, setIsClearing] = useState(false);
   const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   // Redirect naar login als niet ingelogd
   useEffect(() => {
@@ -78,10 +79,11 @@ const Dashboard = () => {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setOrganizations(data);
+        const orgs = data as { id: string; name: string }[];
+        setOrganizations(orgs);
         // Set first organization as default if none selected
-        if (!adminSelectedOrgId) {
-          setAdminSelectedOrgId(data[0].id);
+        if (!adminSelectedOrgId && orgs[0]) {
+          setAdminSelectedOrgId(orgs[0].id);
         }
       }
     } catch (error) {
@@ -92,21 +94,90 @@ const Dashboard = () => {
   // Get effective organization ID (selected org for admin, user's org for others)
   const effectiveOrgId = user?.role === "admin" ? adminSelectedOrgId : user?.organization_id || null;
 
+  const isValidUuid = (value: string | null) => {
+    if (!value) return false;
+    // Simple UUID v4/UUID regex
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  };
+
+  // Generate a valid UUID v4 string for conversation_id (Postgres uuid type)
+  const createConversationId = () => {
+    // Prefer native crypto.randomUUID when available
+    if (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function") {
+      return (crypto as any).randomUUID() as string;
+    }
+
+    // Fallback: manual UUID v4 generator
+    const getRandomValues =
+      typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function"
+        ? (crypto.getRandomValues.bind(crypto) as (buf: Uint8Array) => Uint8Array)
+        : null;
+
+    const bytes = new Uint8Array(16);
+    if (getRandomValues) {
+      getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < 16; i++) {
+        bytes[i] = Math.floor(Math.random() * 256);
+      }
+    }
+
+    // Per RFC 4122 section 4.4
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+
+    const toHex = (n: number) => n.toString(16).padStart(2, "0");
+    const b = Array.from(bytes, toHex).join("");
+
+    return (
+      b.slice(0, 8) +
+      "-" +
+      b.slice(8, 12) +
+      "-" +
+      b.slice(12, 16) +
+      "-" +
+      b.slice(16, 20) +
+      "-" +
+      b.slice(20, 32)
+    );
+  };
+
+  // Initialize or restore conversation ID per organization
+  useEffect(() => {
+    if (!effectiveOrgId) {
+      setConversationId(null);
+      return;
+    }
+
+    const storageKey = `chatConversationId_${effectiveOrgId}`;
+    const existing = localStorage.getItem(storageKey);
+    if (isValidUuid(existing)) {
+      setConversationId(existing as string);
+      return;
+    }
+
+    const newId = createConversationId();
+    localStorage.setItem(storageKey, newId);
+    setConversationId(newId);
+  }, [effectiveOrgId]);
+
   // Load chat messages
   useEffect(() => {
-    if (effectiveOrgId && activeTab === "chat") {
+    if (effectiveOrgId && conversationId && activeTab === "chat") {
       loadMessages();
     }
-  }, [effectiveOrgId, activeTab]);
+  }, [effectiveOrgId, activeTab, conversationId]);
 
   const loadMessages = async () => {
-    if (!effectiveOrgId) return;
+    if (!effectiveOrgId || !conversationId) return;
 
     try {
       const { data, error } = await supabase
         .from("chat_messages")
         .select("*")
         .eq("organization_id", effectiveOrgId)
+        // conversation-based geschiedenis
+        .eq("conversation_id", conversationId as any)
         .order("created_at", { ascending: true })
         .limit(50);
 
@@ -114,10 +185,10 @@ const Dashboard = () => {
 
       if (data && data.length > 0) {
         setMessages(
-          data.map((msg) => ({
-            id: msg.id,
-            role: msg.role as "user" | "assistant",
-            content: msg.content,
+          (data as any[]).map((msg) => ({
+            id: (msg as any).id,
+            role: (msg as any).role as "user" | "assistant",
+            content: (msg as any).content as string,
           }))
         );
       } else {
@@ -136,7 +207,7 @@ const Dashboard = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !effectiveOrgId || isSending) return;
+    if (!inputValue.trim() || !effectiveOrgId || !conversationId || isSending) return;
 
     const userMessageContent = inputValue.trim();
     setInputValue("");
@@ -152,10 +223,11 @@ const Dashboard = () => {
 
     try {
       // Save user message to database
-      const { data: savedMessage, error: saveError } = await supabase
-        .from("chat_messages")
+      const { data: savedMessage, error: saveError } = await (supabase
+        .from("chat_messages") as any)
         .insert({
           organization_id: effectiveOrgId,
+          conversation_id: conversationId,
           user_id: user!.id,
           role: "user",
           content: userMessageContent,
@@ -173,7 +245,7 @@ const Dashboard = () => {
       );
 
       // Track analytics with question text
-      await supabase.from("analytics").insert({
+      await (supabase.from("analytics") as any).insert({
         organization_id: effectiveOrgId,
         event_type: "question_asked",
         event_data: { 
@@ -191,6 +263,7 @@ const Dashboard = () => {
             question: userMessageContent,
             organizationId: effectiveOrgId,
             userId: user!.id,
+            conversationId,
           },
         });
 
@@ -217,10 +290,11 @@ const Dashboard = () => {
         }
 
         // Save AI response to database
-        const { data: aiMessage, error: aiError } = await supabase
-          .from("chat_messages")
+        const { data: aiMessage, error: aiError } = await (supabase
+          .from("chat_messages") as any)
           .insert({
             organization_id: effectiveOrgId,
+            conversation_id: conversationId,
             role: "assistant",
             content: aiResponse,
           })
@@ -243,10 +317,11 @@ const Dashboard = () => {
         // Fallback response
         const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Zorg ervoor dat de Edge Function is geconfigureerd en dat er documenten zijn geüpload.";
         
-        const { data: aiMessage } = await supabase
-          .from("chat_messages")
+        const { data: aiMessage } = await (supabase
+          .from("chat_messages") as any)
           .insert({
             organization_id: effectiveOrgId,
+            conversation_id: conversationId,
             role: "assistant",
             content: fallbackResponse,
           })

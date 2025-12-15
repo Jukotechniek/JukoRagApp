@@ -32,6 +32,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
 import { processDocumentForRAG, extractTextFromFile } from "@/lib/document-processing";
+import type { Database } from "@/types/database";
+
+type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
 
 interface Document {
   id: string;
@@ -89,19 +92,21 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       setLoading(true);
       const { data, error } = await supabase
         .from("documents")
-        .select(`
+        .select(
+          `
           *,
           users:uploaded_by (
             name
           )
-        `)
+        `
+        )
         .eq("organization_id", effectiveOrgId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
       if (data) {
-        const formattedDocs: Document[] = data.map((doc: any) => {
+        const formattedDocs: Document[] = (data as (DocumentRow & { users?: { name: string } | null })[]).map((doc) => {
           // Determine file type from file_type
           let type: "pdf" | "docx" | "xlsx" | "image" = "pdf";
           if (doc.file_type.includes("word") || doc.file_type.includes("docx")) type = "docx";
@@ -195,8 +200,8 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName);
 
         // Save document metadata to database
-        const { data: savedDocument, error: dbError } = await supabase
-          .from("documents")
+        const { data: savedDocument, error: dbError } = await (supabase
+          .from("documents") as any)
           .insert({
             organization_id: effectiveOrgId,
             name: file.name,
@@ -211,7 +216,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         if (dbError) throw dbError;
 
         // Track analytics
-        await supabase.from("analytics").insert({
+        await (supabase.from("analytics") as any).insert({
           organization_id: effectiveOrgId,
           event_type: "document_uploaded",
           event_data: { file_name: file.name, file_size: file.size },
@@ -230,7 +235,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             
             if (textContent && textContent.trim().length > 0) {
               // Process in background (don't wait for completion)
-              processDocumentForRAG(savedDocument.id, textContent, effectiveOrgId)
+                processDocumentForRAG((savedDocument as any).id, textContent, effectiveOrgId)
                 .then(() => {
                   toast({
                     title: "Document verwerkt",
@@ -297,7 +302,17 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
     if (!documentToDelete || !effectiveOrgId) return;
 
     try {
-      // Delete from database
+      // 1) Verwijder alle gekoppelde embeddings (document_sections)
+      const { error: sectionsError } = await supabase
+        .from("document_sections")
+        .delete()
+        .eq("document_id", documentToDelete.id);
+
+      if (sectionsError) {
+        console.error("Error deleting document sections:", sectionsError);
+      }
+
+      // 2) Verwijder document record zelf
       const { error: dbError } = await supabase
         .from("documents")
         .delete()
