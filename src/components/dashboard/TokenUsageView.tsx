@@ -99,15 +99,17 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
 
       if (error) throw error;
 
-      setTokenUsage(data || []);
+      const usage: TokenUsage[] = (data || []) as TokenUsage[];
+
+      setTokenUsage(usage);
 
       // Calculate stats
-      const totalTokens = data?.reduce((sum, item) => sum + item.total_tokens, 0) || 0;
-      const totalCost = data?.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0) || 0;
+      const totalTokens = usage.reduce((sum, item) => sum + item.total_tokens, 0);
+      const totalCost = usage.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0);
       
-      const chatData = data?.filter(item => item.operation_type === 'chat') || [];
-      const embeddingData = data?.filter(item => item.operation_type === 'embedding') || [];
-      const docData = data?.filter(item => item.operation_type === 'document_processing') || [];
+      const chatData = usage.filter((item) => item.operation_type === 'chat');
+      const embeddingData = usage.filter((item) => item.operation_type === 'embedding');
+      const docData = usage.filter((item) => item.operation_type === 'document_processing');
 
       setStats({
         totalTokens,
@@ -139,33 +141,17 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
     return new Intl.NumberFormat("nl-NL").format(num);
   };
 
-  if (loading) {
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Laden...</div>
+        </div>
+      );
+    }
+
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground">Laden...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Token Gebruik</h1>
-        <p className="text-muted-foreground mt-2">
-          Overzicht van OpenAI API token gebruik en kosten
-        </p>
-      </div>
-
-      {/* Time Range Selector */}
-      <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as typeof timeRange)}>
-        <TabsList>
-          <TabsTrigger value="day">Vandaag</TabsTrigger>
-          <TabsTrigger value="week">Deze week</TabsTrigger>
-          <TabsTrigger value="month">Deze maand</TabsTrigger>
-          <TabsTrigger value="all">Alles</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={timeRange} className="space-y-6">
+      <>
           {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -332,6 +318,39 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
               </div>
             </CardContent>
           </Card>
+      </>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-3xl font-bold text-foreground">Token Gebruik</h1>
+        <p className="text-muted-foreground mt-2">
+          Overzicht van OpenAI API token gebruik en kosten
+        </p>
+      </div>
+
+      {/* Time Range Selector */}
+      <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as typeof timeRange)}>
+        <TabsList>
+          <TabsTrigger value="day">Vandaag</TabsTrigger>
+          <TabsTrigger value="week">Deze week</TabsTrigger>
+          <TabsTrigger value="month">Deze maand</TabsTrigger>
+          <TabsTrigger value="all">Alles</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="day" className="space-y-6">
+          {renderContent()}
+        </TabsContent>
+        <TabsContent value="week" className="space-y-6">
+          {renderContent()}
+        </TabsContent>
+        <TabsContent value="month" className="space-y-6">
+          {renderContent()}
+        </TabsContent>
+        <TabsContent value="all" className="space-y-6">
+          {renderContent()}
         </TabsContent>
       </Tabs>
     </div>

@@ -36,7 +36,7 @@ interface Invoice {
 interface Organization {
   id: string;
   name: string;
-  plan: "starter" | "professional";
+  plan: "starter" | "professional" | "enterprise";
 }
 
 interface BillingViewProps {
@@ -52,7 +52,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
   const [cardCVC, setCardCVC] = useState("");
   const [cardName, setCardName] = useState("");
   const [changePlanDialogOpen, setChangePlanDialogOpen] = useState(false);
-  const [newPlan, setNewPlan] = useState<"starter" | "professional">("professional");
+  const [newPlan, setNewPlan] = useState<"starter" | "professional" | "enterprise">("professional");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,8 +222,19 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           "Geavanceerde analytics",
         ],
       },
+      enterprise: {
+        name: "Enterprise",
+        price: "Prijs op aanvraag",
+        period: "",
+        features: [
+          "Onbeperkte documenten en gebruikers",
+          "Lokaal draaiend AI-model (on-premise of private cloud)",
+          "Volledig maatwerk ingericht op uw processen",
+          "Dedicated support & SLA",
+        ],
+      },
     };
-    return planData[plan];
+    return planData[plan as keyof typeof planData];
   }, [selectedOrganization]);
 
   const plans = [
@@ -244,6 +255,18 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
         "Onbeperkte gebruikers",
         "Prioriteit support",
         "Geavanceerde analytics",
+      ],
+    },
+    {
+      id: "enterprise",
+      name: "Enterprise",
+      price: "Prijs op aanvraag",
+      period: "",
+      features: [
+        "Onbeperkte documenten en gebruikers",
+        "Lokaal draaiend AI-model (on-premise of private cloud)",
+        "Volledig maatwerk ingericht op uw processen",
+        "Dedicated support & SLA",
       ],
     },
   ];
@@ -270,7 +293,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     setCardName("");
   };
 
-  const handlePlanChange = (planId: "starter" | "professional") => {
+  const handlePlanChange = (planId: "starter" | "professional" | "enterprise") => {
     if (user?.role === "admin" && selectedOrganization) {
       // Admin kan abonnement wijzigen voor organisatie
       setNewPlan(planId);
@@ -456,13 +479,15 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
                     variant={selectedOrganization?.plan === plan.id ? "outline" : "hero"}
                     className="w-full"
                     disabled={selectedOrganization?.plan === plan.id}
-                    onClick={() => handlePlanChange(plan.id as "starter" | "professional")}
+                    onClick={() => handlePlanChange(plan.id as "starter" | "professional" | "enterprise")}
                   >
                     {selectedOrganization?.plan === plan.id
                       ? "Huidig Plan"
-                      : user?.role === "admin"
-                        ? "Wijzigen"
-                        : "Upgraden"}
+                      : plan.id === "enterprise"
+                        ? "Prijs op aanvraag"
+                        : user?.role === "admin"
+                          ? "Wijzigen"
+                          : "Upgraden"}
                   </Button>
                 </div>
               ))}
@@ -620,13 +645,17 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           <div className="py-4">
             <div className="space-y-2">
               <Label>Nieuw abonnement</Label>
-              <Select value={newPlan} onValueChange={(value: "starter" | "professional") => setNewPlan(value)}>
+              <Select
+                value={newPlan}
+                onValueChange={(value: "starter" | "professional" | "enterprise") => setNewPlan(value)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="starter">Starter - €99/maand</SelectItem>
                   <SelectItem value="professional">Professional - €299/maand</SelectItem>
+                  <SelectItem value="enterprise">Enterprise - prijs op aanvraag</SelectItem>
                 </SelectContent>
               </Select>
             </div>

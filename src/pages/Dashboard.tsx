@@ -30,10 +30,10 @@ import DocumentsView from "@/components/dashboard/DocumentsView";
 import BillingView from "@/components/dashboard/BillingView";
 import SettingsView from "@/components/dashboard/SettingsView";
 import TokenUsageView from "@/components/dashboard/TokenUsageView";
+import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { generateEmbedding, generateAIResponse } from "@/lib/openai";
 
 interface Message {
   id: string;
@@ -50,6 +50,7 @@ const Dashboard = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
 
@@ -181,45 +182,41 @@ const Dashboard = () => {
         },
       });
 
-      // RAG: Generate embedding for question and search for relevant document sections
-      let context = "";
+      // Call Edge Function for chat completion with RAG
+      // This ensures organization-specific document access and keeps API keys secure
+      let aiResponse: string;
       try {
-        const queryEmbedding = await generateEmbedding(
-          userMessageContent,
-          effectiveOrgId,
-          user!.id
-        );
-        
-        const { data: relevantSections, error: searchError } = await supabase.rpc(
-          'match_document_sections',
-          {
-            p_organization_id: effectiveOrgId,
-            query_embedding: queryEmbedding,
-            match_count: 5,
-            match_threshold: 0.7,
-          }
-        );
+        const { data, error } = await supabase.functions.invoke('chat', {
+          body: {
+            question: userMessageContent,
+            organizationId: effectiveOrgId,
+            userId: user!.id,
+          },
+        });
 
-        if (!searchError && relevantSections && relevantSections.length > 0) {
-          // Combine relevant sections as context
-          context = relevantSections
-            .map((section: any) => section.content)
-            .join('\n\n');
+        if (error) {
+          throw new Error(error.message || 'Failed to call chat function');
         }
-      } catch (embeddingError) {
-        console.error('Error generating embedding or searching:', embeddingError);
-        // Continue without context if embedding fails
-      }
 
-      // Generate AI response with RAG context
-      try {
-        const aiResponse = await generateAIResponse(
-          userMessageContent,
-          context,
-          effectiveOrgId,
-          user!.id
-        );
+        if (!data?.success) {
+          throw new Error(data?.error || 'Chat function returned an error');
+        }
 
+        aiResponse = data.response || 'Sorry, ik kon geen antwoord genereren.';
+
+        // Log debug info if available
+        if (data.debug) {
+          console.log('[Chat] Debug info:', {
+            usedRAG: data.usedRAG,
+            hasDocuments: data.hasDocuments,
+            hasContext: data.hasContext,
+            contextLength: data.contextLength,
+            embeddingGenerated: data.debug.embeddingGenerated,
+            sectionsFound: data.debug.sectionsFound,
+          });
+        }
+
+        // Save AI response to database
         const { data: aiMessage, error: aiError } = await supabase
           .from("chat_messages")
           .insert({
@@ -240,10 +237,11 @@ const Dashboard = () => {
             },
           ]);
         }
-      } catch (aiError: any) {
-        console.error('Error generating AI response:', aiError);
+      } catch (chatError: any) {
+        console.error('Error calling chat function:', chatError);
+        
         // Fallback response
-        const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Zorg ervoor dat je OpenAI API key is ingesteld en dat er documenten zijn geüpload.";
+        const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Zorg ervoor dat de Edge Function is geconfigureerd en dat er documenten zijn geüpload.";
         
         const { data: aiMessage } = await supabase
           .from("chat_messages")
@@ -265,6 +263,12 @@ const Dashboard = () => {
             },
           ]);
         }
+
+        toast({
+          title: "Fout",
+          description: chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.",
+          variant: "destructive",
+        });
       } finally {
         setIsSending(false);
       }
@@ -276,6 +280,37 @@ const Dashboard = () => {
         variant: "destructive",
       });
       setIsSending(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!effectiveOrgId || isClearing) return;
+
+    setIsClearing(true);
+    try {
+      const { error } = await supabase
+        .from("chat_messages")
+        .delete()
+        .eq("organization_id", effectiveOrgId);
+
+      if (error) throw error;
+
+      setMessages([
+        {
+          id: "welcome",
+          role: "assistant",
+          content: "De chat is geleegd. Stel gerust een nieuwe vraag.",
+        },
+      ]);
+    } catch (error) {
+      console.error("Error clearing chat:", error);
+      toast({
+        title: "Fout",
+        description: "De chat kon niet worden geleegd.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -423,13 +458,23 @@ const Dashboard = () => {
           {activeTab === "chat" && (
             <div className="h-full flex flex-col max-w-4xl mx-auto">
               {/* Chat Header */}
-              <div className="mb-6">
-                <h1 className="font-display text-2xl font-bold text-foreground">
-                  AI Assistent
-                </h1>
-                <p className="text-muted-foreground">
-                  Stel vragen over uw technische documentatie
-                </p>
+              <div className="mb-6 flex items-center justify-between gap-3">
+                <div>
+                  <h1 className="font-display text-2xl font-bold text-foreground">
+                    AI Assistent
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Stel vragen over uw technische documentatie
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearChat}
+                  disabled={isClearing || messages.length === 0}
+                >
+                  Chat leegmaken
+                </Button>
               </div>
 
               {/* Messages */}
@@ -448,7 +493,11 @@ const Dashboard = () => {
                           : "glass rounded-bl-md"
                       }`}
                     >
-                      <p className="text-sm">{message.content}</p>
+                      {message.role === "assistant" ? (
+                        <MarkdownMessage content={message.content} />
+                      ) : (
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+                      )}
                     </div>
                   </div>
                 ))}

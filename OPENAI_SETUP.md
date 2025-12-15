@@ -148,3 +148,4 @@ Zorg dat je de RAG schema hebt geïnstalleerd:
 5. 🔄 Error handling verbeteren (optioneel)
 6. 🔄 Batch processing optimaliseren (optioneel)
 
+

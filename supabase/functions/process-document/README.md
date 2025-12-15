@@ -64,3 +64,4 @@ Deze function heeft nodig:
 - OpenAI embeddings: $0.02 per 1M tokens
 - Database writes: Inbegrepen in Supabase plan
 
+
