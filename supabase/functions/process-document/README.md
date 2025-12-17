@@ -65,3 +65,5 @@ Deze function heeft nodig:
 - Database writes: Inbegrepen in Supabase plan
 
 
+
+

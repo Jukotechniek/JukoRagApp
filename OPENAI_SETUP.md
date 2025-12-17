@@ -149,3 +149,5 @@ Zorg dat je de RAG schema hebt geïnstalleerd:
 6. 🔄 Batch processing optimaliseren (optioneel)
 
 
+
+
