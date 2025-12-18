@@ -37,12 +37,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let timeoutId: NodeJS.Timeout;
     let sessionLoaded = false; // Track if we've already loaded from getSession
 
-    // Set a timeout to ensure loading doesn't hang forever
+    // Set a shorter timeout to ensure loading doesn't hang forever
     timeoutId = setTimeout(() => {
       if (mounted) {
         setLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 3000); // 3 second timeout - much shorter for better UX
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -58,12 +58,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (session?.user) {
         sessionLoaded = true; // Mark that we're loading from getSession
         setSupabaseUser(session.user);
-        // Only load if not already loading
+        
+        // Set loading to false immediately if we have a session
+        // User data will load in background, but we don't block the UI
+        setLoading(false);
+        
+        // Load user data in background, but don't block
         if (!(loadUserData as any).inProgress) {
+          // Don't await - let it load in background
           loadUserData(session.user.id).catch((err) => {
-            if (mounted) {
-              setLoading(false);
-            }
+            console.error("Error loading user data on mount:", err);
+            // Loading already false, so no need to set it again
           });
         }
       } else {
@@ -87,41 +92,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (session?.user) {
         setSupabaseUser(session.user);
         
+        // Don't set loading to true - load in background
         // Only load if not already loading and not from initial getSession
         if (!(loadUserData as any).inProgress && !sessionLoaded) {
-          // Set loading to true while we load
-          setLoading(true);
-          
-          try {
-            // Load user data with timeout
-            const loadUserPromise = loadUserData(session.user.id);
-            const timeoutPromise = new Promise<void>((resolve) => 
-              setTimeout(() => {
-                if (mounted) {
-                  setLoading(false);
-                }
-                resolve();
-              }, 5000)
-            );
-            await Promise.race([loadUserPromise, timeoutPromise]);
-          } catch (error) {
-            console.error("Error in onAuthStateChange loadUserData:", error);
-            if (mounted) {
-              setLoading(false);
-            }
-          }
+          // Load user data in background without blocking UI
+          loadUserData(session.user.id).catch((err) => {
+            console.error("Error in onAuthStateChange loadUserData:", err);
+          });
         } else if (sessionLoaded) {
           // Reset the flag after first load
           sessionLoaded = false;
-          // If we already loaded from getSession, just ensure loading is false
+          // Ensure loading is false
           setLoading(false);
         } else {
-          // If already loading, set a timeout to ensure we don't hang forever
-          setTimeout(() => {
-            if (mounted) {
-              setLoading(false);
-            }
-          }, 2000);
+          // If already loading, ensure loading is false (data loads in background)
+          setLoading(false);
         }
       } else {
         setSupabaseUser(null);
@@ -146,14 +131,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set flag immediately to prevent concurrent calls
     (loadUserData as any).inProgress = true;
     
+    // Don't set loading to true here - we want to load in background
+    // Only set loading if we're actively waiting for this data
+    const shouldSetLoading = false; // Changed to false to prevent blocking UI
+    
     try {
-      setLoading(true);
+      if (shouldSetLoading) {
+        setLoading(true);
+      }
       
       // Get auth user info for fallback
       const { data: authUser, error: authError } = await supabase.auth.getUser();
       
       if (authError || !authUser?.user) {
-        setLoading(false);
+        if (shouldSetLoading) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -186,7 +179,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             organization_name: null,
             organization_plan: null,
           });
-          setLoading(false);
+          if (shouldSetLoading) {
+            setLoading(false);
+          }
           return;
         }
 
@@ -227,7 +222,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             organization_plan: org?.plan || null,
           });
         }
-        setLoading(false);
+        if (shouldSetLoading) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -245,7 +242,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             organization_plan: null,
           });
         }
-        setLoading(false);
+        if (shouldSetLoading) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -281,8 +280,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           organization_plan: org?.plan || null,
         });
         
-        // Explicitly set loading to false after setting user
-        setLoading(false);
+        // Don't set loading here - we're loading in background
+        if (shouldSetLoading) {
+          setLoading(false);
+        }
         return;
       } else {
         // No user data and no error - use auth data as fallback
@@ -297,12 +298,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             organization_plan: null,
           });
         }
-        // Explicitly set loading to false
-        setLoading(false);
+        // Don't set loading here - we're loading in background
+        if (shouldSetLoading) {
+          setLoading(false);
+        }
         return;
       }
     } catch (error) {
-      // Always set loading to false, even on error
       // Use auth data as fallback
       const { data: authUser } = await supabase.auth.getUser();
       if (authUser?.user) {
@@ -318,7 +320,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } finally {
       (loadUserData as any).inProgress = false;
-      setLoading(false);
+      // Don't set loading to false here if we're loading in background
+      if (shouldSetLoading) {
+        setLoading(false);
+      }
     }
   };
   

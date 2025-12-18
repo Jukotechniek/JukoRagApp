@@ -42,7 +42,7 @@ interface Message {
 }
 
 const Dashboard = () => {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading, supabaseUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -56,11 +56,13 @@ const Dashboard = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
 
   // Redirect naar login als niet ingelogd
+  // Check both user and supabaseUser - if we have supabaseUser but not user yet,
+  // that's OK (user data is loading in background)
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !supabaseUser) {
       navigate("/auth");
     }
-  }, [user, loading, navigate]);
+  }, [user, supabaseUser, loading, navigate]);
 
   // Load organizations for admin selector
   useEffect(() => {
