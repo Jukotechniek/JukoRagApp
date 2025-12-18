@@ -15,8 +15,16 @@ const getOpenAIClient = () => {
 
 /**
  * Track token usage in database
+ * @param organizationId - Organization ID
+ * @param userId - User ID (optional)
+ * @param model - Model name (e.g., 'gpt-4o-mini')
+ * @param operationType - Type of operation ('chat' | 'embedding' | 'document_processing')
+ * @param promptTokens - Number of prompt tokens
+ * @param completionTokens - Number of completion tokens
+ * @param totalTokens - Total tokens
+ * @param metadata - Optional metadata
  */
-async function trackTokenUsage(
+export async function trackTokenUsage(
   organizationId: string,
   userId: string | null,
   model: string,

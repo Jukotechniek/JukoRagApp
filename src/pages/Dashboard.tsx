@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -54,6 +54,7 @@ const Dashboard = () => {
   const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Redirect naar login als niet ingelogd
   // Check both user and supabaseUser - if we have supabaseUser but not user yet,
@@ -170,6 +171,13 @@ const Dashboard = () => {
     }
   }, [effectiveOrgId, activeTab, conversationId]);
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
   const loadMessages = async () => {
     if (!effectiveOrgId || !conversationId) return;
 
@@ -276,6 +284,85 @@ const Dashboard = () => {
         // Log metadata if available
         if (chatResponse.metadata) {
           console.log('[Chat] Metadata:', chatResponse.metadata);
+        }
+
+        // Track token usage if metadata contains usage info
+        // Always add 686 prompt tokens for system prompt and context
+        const SYSTEM_PROMPT_TOKENS = 686;
+        
+        if (chatResponse.metadata?.usage && effectiveOrgId && user) {
+          try {
+            const { trackTokenUsage } = await import('@/lib/openai');
+            const usage = chatResponse.metadata.usage;
+            
+            // Add system prompt tokens to prompt tokens
+            const adjustedPromptTokens = (usage.prompt_tokens || 0) + SYSTEM_PROMPT_TOKENS;
+            const adjustedTotalTokens = adjustedPromptTokens + (usage.completion_tokens || 0);
+            
+            await trackTokenUsage(
+              effectiveOrgId,
+              user.id,
+              chatResponse.metadata.model || 'gpt-4o-mini',
+              'chat',
+              adjustedPromptTokens,
+              usage.completion_tokens || 0,
+              adjustedTotalTokens,
+              {
+                conversation_id: conversationId,
+                question_length: userMessageContent.length,
+                response_length: aiResponse.length,
+                system_prompt_tokens: SYSTEM_PROMPT_TOKENS,
+                reported_prompt_tokens: usage.prompt_tokens || 0,
+                ...chatResponse.metadata,
+              }
+            );
+            
+            console.log('[Chat] Token usage tracked:', { 
+              adjustedPromptTokens, 
+              completionTokens: usage.completion_tokens || 0,
+              adjustedTotalTokens 
+            });
+          } catch (tokenTrackError) {
+            console.error('Error tracking tokens:', tokenTrackError);
+            // Don't fail the chat if token tracking fails
+          }
+        } else if (effectiveOrgId && user) {
+          // Fallback: estimate tokens if no usage info provided
+          // Rough estimate: ~4 characters per token for English/Dutch
+          const estimatedPromptTokens = Math.ceil(userMessageContent.length / 4) + SYSTEM_PROMPT_TOKENS;
+          const estimatedCompletionTokens = Math.ceil(aiResponse.length / 4);
+          const estimatedTotalTokens = estimatedPromptTokens + estimatedCompletionTokens;
+
+          try {
+            const { trackTokenUsage } = await import('@/lib/openai');
+            
+            await trackTokenUsage(
+              effectiveOrgId,
+              user.id,
+              'gpt-4o-mini',
+              'chat',
+              estimatedPromptTokens,
+              estimatedCompletionTokens,
+              estimatedTotalTokens,
+              {
+                conversation_id: conversationId,
+                question_length: userMessageContent.length,
+                response_length: aiResponse.length,
+                system_prompt_tokens: SYSTEM_PROMPT_TOKENS,
+                estimated: true,
+                note: 'Token usage estimated - N8N did not provide usage data',
+              }
+            );
+            
+            console.log('[Chat] Estimated token usage tracked:', { 
+              estimatedPromptTokens, 
+              estimatedCompletionTokens, 
+              estimatedTotalTokens 
+            });
+          } catch (tokenTrackError) {
+            console.error('Error tracking estimated tokens:', tokenTrackError);
+            // Don't fail the chat if token tracking fails
+          }
         }
 
         // Save AI response to database
@@ -535,11 +622,11 @@ const Dashboard = () => {
         )}
 
         {/* Content Area */}
-        <div className="flex-1 p-4 lg:p-8">
+        <div className="flex-1 p-4 lg:p-8 overflow-hidden flex flex-col">
           {activeTab === "chat" && (
-            <div className="h-full flex flex-col max-w-4xl mx-auto">
+            <div className="h-full flex flex-col max-w-4xl mx-auto w-full">
               {/* Chat Header */}
-              <div className="mb-6 flex items-center justify-between gap-3">
+              <div className="mb-4 flex items-center justify-between gap-3 flex-shrink-0">
                 <div>
                   <h1 className="font-display text-2xl font-bold text-foreground">
                     AI Assistent
@@ -558,8 +645,11 @@ const Dashboard = () => {
                 </Button>
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+              {/* Messages - Scrollable container with fixed height */}
+              <div 
+                className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0 pr-2"
+                style={{ maxHeight: 'calc(100vh - 280px)' }}
+              >
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -582,10 +672,12 @@ const Dashboard = () => {
                     </div>
                   </div>
                 ))}
+                {/* Invisible element to scroll to */}
+                <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
-              <div className="flex items-center gap-3">
+              {/* Input - Fixed at bottom */}
+              <div className="flex items-center gap-3 flex-shrink-0 pt-2">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}

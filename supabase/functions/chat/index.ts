@@ -133,6 +133,19 @@ async function performRAG(
 
   const queryEmbedding = embeddingResponse.data[0].embedding as number[];
 
+  // Track embedding token usage (fire-and-forget)
+  if (embeddingResponse.usage) {
+    void trackTokens(
+      supabase,
+      organizationId,
+      null, // Embeddings don't have a specific user
+      "text-embedding-3-small",
+      "embedding",
+      embeddingResponse.usage,
+      { question_length: question.length, search_terms: searchTerms }
+    );
+  }
+
   // Search documents
   const { data: matches, error } = await supabase.rpc("match_document_sections", {
     p_organization_id: organizationId,
