@@ -42,10 +42,8 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
     totalTokens: 0,
     totalCost: 0,
     chatTokens: 0,
-    embeddingTokens: 0,
     documentProcessingTokens: 0,
     chatCost: 0,
-    embeddingCost: 0,
     documentProcessingCost: 0,
   });
 
@@ -108,17 +106,14 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
       const totalCost = usage.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0);
       
       const chatData = usage.filter((item) => item.operation_type === 'chat');
-      const embeddingData = usage.filter((item) => item.operation_type === 'embedding');
       const docData = usage.filter((item) => item.operation_type === 'document_processing');
 
       setStats({
         totalTokens,
         totalCost,
         chatTokens: chatData.reduce((sum, item) => sum + item.total_tokens, 0),
-        embeddingTokens: embeddingData.reduce((sum, item) => sum + item.total_tokens, 0),
         documentProcessingTokens: docData.reduce((sum, item) => sum + item.total_tokens, 0),
         chatCost: chatData.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0),
-        embeddingCost: embeddingData.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0),
         documentProcessingCost: docData.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0),
       });
     } catch (error) {
@@ -195,20 +190,20 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Embedding Tokens</CardTitle>
-                <Database className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Document Processing Tokens</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatNumber(stats.embeddingTokens)}</div>
+                <div className="text-2xl font-bold">{formatNumber(stats.documentProcessingTokens)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {formatCurrency(stats.embeddingCost)} kosten
+                  {formatCurrency(stats.documentProcessingCost)} kosten
                 </p>
               </CardContent>
             </Card>
           </div>
 
           {/* Breakdown by Operation Type */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -226,28 +221,6 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Kosten:</span>
                     <span className="font-medium">{formatCurrency(stats.chatCost)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Embeddings
-                </CardTitle>
-                <CardDescription>Document zoekopdrachten</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Tokens:</span>
-                    <span className="font-medium">{formatNumber(stats.embeddingTokens)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Kosten:</span>
-                    <span className="font-medium">{formatCurrency(stats.embeddingCost)}</span>
                   </div>
                 </div>
               </CardContent>

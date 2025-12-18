@@ -29,7 +29,7 @@ async function trackTokenUsage(
   try {
 
     // Calculate cost using database function
-    const { data: costData, error: costError } = await supabase.rpc('calculate_token_cost', {
+    const { data: costData, error: costError } = await (supabase as any).rpc('calculate_token_cost', {
       p_model: model,
       p_prompt_tokens: promptTokens,
       p_completion_tokens: completionTokens,
@@ -41,7 +41,7 @@ async function trackTokenUsage(
 
     const cost = costError ? 0 : (costData || 0);
 
-    const { data: insertData, error: insertError } = await supabase
+    const { data: insertData, error: insertError } = await (supabase as any)
       .from('token_usage')
       .insert({
         organization_id: organizationId,
@@ -69,67 +69,6 @@ async function trackTokenUsage(
   } catch (error: any) {
     // Don't throw - token tracking shouldn't break the main flow
       // Error tracking token usage - silently fail
-  }
-}
-
-/**
- * Generate embedding for a text using OpenAI
- * @param text - Text to generate embedding for
- * @param organizationId - Organization ID for tracking
- * @param userId - User ID for tracking (optional)
- * @returns Array of 1536 numbers (embedding vector)
- */
-export async function generateEmbedding(
-  text: string,
-  organizationId?: string,
-  userId?: string | null
-): Promise<number[]> {
-  try {
-    const openai = getOpenAIClient();
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small', // or 'text-embedding-ada-002'
-      input: text,
-      dimensions: 1536,
-    });
-
-    const usage = response.usage;
-    if (usage && organizationId) {
-      await trackTokenUsage(
-        organizationId,
-        userId || null,
-        'text-embedding-3-small',
-        'embedding',
-        usage.prompt_tokens,
-        0, // Embeddings don't have completion tokens
-        usage.total_tokens,
-        { text_length: text.length }
-      );
-    }
-
-    return response.data[0].embedding;
-  } catch (error: any) {
-    console.error('Error generating embedding:', error);
-    throw new Error(`Failed to generate embedding: ${error.message}`);
-  }
-}
-
-/**
- * Generate embeddings for multiple texts (batch processing)
- * @param texts - Array of texts to generate embeddings for
- * @returns Array of embedding vectors
- */
-export async function generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
-  try {
-    const openai = getOpenAIClient();
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: texts,
-      dimensions: 1536,
-    });
-    return response.data.map(item => item.embedding);
-  } catch (error: any) {
-    console.error('Error generating embeddings batch:', error);
-    throw new Error(`Failed to generate embeddings: ${error.message}`);
   }
 }
 

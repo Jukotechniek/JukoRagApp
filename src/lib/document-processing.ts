@@ -1,7 +1,6 @@
 // Document processing utilities for RAG
 // Splits documents into chunks and generates embeddings
 
-import { generateEmbeddingsBatch } from './openai';
 import { supabase } from './supabase';
 import { Database } from '@/types/database';
 
@@ -178,6 +177,31 @@ export async function processDocumentForRAG(
     
     if (!data.success) {
       throw new Error(data.error || data.message || 'Processing failed');
+    }
+
+    // Optioneel: token usage van N8N webhook opslaan (embeddings)
+    // Verwacht dat N8N iets terugstuurt als:
+    // { success: true, chunksProcessed: 10, message: '...', totalTokens: 1234 }
+    if (data.totalTokens && organizationId) {
+      try {
+        await (supabase.from('token_usage') as any).insert({
+          organization_id: organizationId,
+          user_id: null,
+          model: 'text-embedding-3-small',
+          operation_type: 'document_processing',
+          prompt_tokens: data.totalTokens,
+          completion_tokens: 0,
+          total_tokens: data.totalTokens,
+          // Kosten via DB-functie zou netter zijn, maar hier slaan we alleen ruwe data + metadata op
+          metadata: {
+            document_id: documentId,
+            chunks_processed: data.chunksProcessed ?? null,
+            source: 'n8n-webhook',
+          },
+        });
+      } catch (tokenError) {
+        console.error('Failed to store embedding token usage from N8N:', tokenError);
+      }
     }
 
     console.log(`N8N processing completed successfully for document: ${documentId}`);

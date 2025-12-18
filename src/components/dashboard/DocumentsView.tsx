@@ -392,6 +392,45 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
     }
   };
 
+  const handleDownload = async (doc: Document) => {
+    if (!doc.file_url) {
+      toast({
+        title: "Geen downloadlink",
+        description: "Er is geen bestand gekoppeld aan dit document.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Probeer storage-pad uit de opgeslagen URL te halen
+      const match = doc.file_url.match(/\/documents\/(.+)$/);
+      let urlToOpen = doc.file_url;
+
+      if (match && match[1]) {
+        const storagePath = decodeURIComponent(match[1]);
+        const { data, error } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(storagePath, 60 * 10); // 10 minuten geldig
+
+        if (error) {
+          console.error("Error creating signed URL:", error);
+        } else if (data?.signedUrl) {
+          urlToOpen = data.signedUrl;
+        }
+      }
+
+      window.open(urlToOpen, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Download error:", error);
+      toast({
+        title: "Download mislukt",
+        description: "Het bestand kon niet worden geopend.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -495,7 +534,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => toast({ title: "Download", description: "Download functionaliteit wordt geïmplementeerd." })}>
+                    <DropdownMenuItem onClick={() => handleDownload(doc)}>
                       <Download className="w-4 h-4 mr-2" />
                       Downloaden
                     </DropdownMenuItem>
