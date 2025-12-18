@@ -74,57 +74,113 @@ export function splitIntoChunks(
 
 /**
  * Process a document: split into chunks and generate embeddings
- * Uses Supabase Edge Function for secure processing (API keys stay on server)
+ * Uses N8N webhook for processing (more reliable than Edge Functions)
+ * N8N will fetch the file from Supabase Storage and extract text itself
  * @param documentId - ID of the document in database
- * @param content - Text content of the document
  * @param organizationId - Organization ID for RLS
  */
 export async function processDocumentForRAG(
   documentId: string,
-  content: string,
   organizationId: string
 ): Promise<void> {
   try {
+    const n8nWebhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
+    
+    if (!n8nWebhookUrl) {
+      // Fallback: Get document info and use Edge Function
+      console.warn('N8N webhook URL not configured, falling back to Edge Function');
+      
+      // Get document to extract content
+      const { data: doc, error: docError } = await supabase
+        .from('documents')
+        .select('file_url, name')
+        .eq('id', documentId)
+        .single();
 
-    // Call Edge Function for processing (keeps API keys secure)
+      if (docError || !doc) {
+        throw new Error('Document not found');
+      }
+
+      const docData = doc as { file_url: string | null; name: string };
+
+      // Extract path from file_url
+      const urlMatch = docData.file_url?.match(/\/documents\/(.+)$/);
+      if (!urlMatch) {
+        throw new Error('Could not extract file path from URL');
+      }
+
+      const storagePath = decodeURIComponent(urlMatch[1]);
+      
+      // Download file from storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('documents')
+        .download(storagePath);
+
+      if (downloadError || !fileData) {
+        throw new Error(`Failed to download file: ${downloadError?.message}`);
+      }
+
+      // Extract text
+      const textContent = await extractTextFromFile(new File([fileData], docData.name));
+
+      // Use Edge Function
     const { data, error } = await supabase.functions.invoke('process-document', {
       body: {
         documentId,
-        content,
+          content: textContent,
         organizationId,
       },
     });
 
-
     if (error) {
-      console.error('Error calling process-document function:', error);
-      
-      // Try to extract error details from the error object
-      let errorMessage = error.message || 'Unknown error';
-      let errorDetails = '';
-      
-      // Check if error has a response we can parse
-      if (error.context?.response) {
-        try {
-          const errorResponse = await error.context.response.json();
-          errorMessage = errorResponse.error || errorMessage;
-          errorDetails = errorResponse.details || '';
+        throw new Error(error.message || 'Edge Function error');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Processing failed');
+      }
+      return;
+    }
+
+    // Call N8N webhook - only send documentId and organizationId
+    // N8N will fetch the file and extract text itself
+    console.log(`Calling N8N webhook for document processing: ${documentId}`);
+    
+    const response = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        documentId,
+        organizationId,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
         } catch {
-          // If we can't parse, use the original message
-        }
+        errorData = { error: errorText };
       }
       
-      const fullError = errorDetails 
-        ? `${errorMessage}. Details: ${errorDetails}`
-        : `${errorMessage}. Check Supabase Edge Function logs (Edge Functions > process-document > Logs) for more details.`;
-      
-      throw new Error(fullError);
+      throw new Error(
+        errorData.error || 
+        errorData.message || 
+        `N8N webhook returned status ${response.status}`
+      );
     }
 
-    if (!data?.success) {
-      const errorMsg = data?.error || data?.details || 'Failed to process document';
-      throw new Error(`Processing failed: ${errorMsg}`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || data.message || 'Processing failed');
     }
+
+    console.log(`N8N processing completed successfully for document: ${documentId}`);
 
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);
@@ -134,15 +190,17 @@ export async function processDocumentForRAG(
 
 /**
  * Extract text from different file types
- * Note: This is a basic implementation. For production, use proper parsers:
- * - PDF: pdf-parse, pdfjs-dist (client-side)
- * - DOCX: mammoth, docx
- * - XLSX: xlsx
+ * Supported: TXT, JSON, XLSX, CSV
+ * TODO: PDF, DOCX support
  */
 export async function extractTextFromFile(file: File): Promise<string> {
+  console.log(`Extracting text from file: ${file.name}, type: ${file.type}`);
+  
   // Handle text files
   if (file.type === 'text/plain' || file.type.startsWith('text/')) {
-    return await file.text();
+    const text = await file.text();
+    console.log(`Text file extracted: ${text.length} characters`);
+    return text;
   }
 
   // Handle JSON files
@@ -150,36 +208,75 @@ export async function extractTextFromFile(file: File): Promise<string> {
     const text = await file.text();
     try {
       const json = JSON.parse(text);
-      return JSON.stringify(json, null, 2);
+      const formatted = JSON.stringify(json, null, 2);
+      console.log(`JSON file extracted: ${formatted.length} characters`);
+      return formatted;
     } catch {
+      console.log(`JSON parsing failed, returning raw text: ${text.length} characters`);
       return text;
     }
   }
 
-  // For PDF, DOCX, XLSX - these require proper parsers
-  // For now, return empty string and let the user know
-  // In production, you would:
-  // - For PDF: Use pdfjs-dist or send to backend for parsing
-  // - For DOCX: Use mammoth library
-  // - For XLSX: Use xlsx library
-  
+  // Handle XLSX files
   if (
-    file.type === 'application/pdf' ||
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    file.type === 'application/vnd.ms-excel' ||
+    file.name.endsWith('.xlsx') ||
+    file.name.endsWith('.xls')
   ) {
-    // Return empty string - these file types need proper parsing
-    // The document will be uploaded but not processed for RAG
-    // You can implement proper parsing later
-    return '';
+    try {
+      // Dynamically import xlsx to avoid bundling if not needed
+      const XLSX = await import('xlsx');
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      
+      let extractedText = '';
+      
+      // Process each sheet
+      workbook.SheetNames.forEach((sheetName, index) => {
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert sheet to CSV format (preserves structure better than JSON)
+        const csv = XLSX.utils.sheet_to_csv(worksheet);
+        
+        if (csv.trim().length > 0) {
+          extractedText += `\n=== Sheet: ${sheetName} ===\n`;
+          extractedText += csv;
+          extractedText += '\n';
+        }
+      });
+      
+      console.log(`XLSX file extracted: ${extractedText.length} characters from ${workbook.SheetNames.length} sheets`);
+      return extractedText.trim();
+    } catch (error: any) {
+      console.error('XLSX extraction error:', error);
+      throw new Error(`Failed to extract text from Excel file: ${error.message}`);
+    }
+  }
+
+  // Handle CSV files
+  if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+    const text = await file.text();
+    console.log(`CSV file extracted: ${text.length} characters`);
+    return text;
+  }
+
+  // For PDF, DOCX - not yet supported
+  if (file.type === 'application/pdf') {
+    throw new Error('PDF files are not yet supported. Please convert to TXT or upload the text content separately.');
+  }
+  
+  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    throw new Error('DOCX files are not yet supported. Please convert to TXT or copy-paste the text content.');
   }
 
   // For images, return empty (you might want OCR later)
   if (file.type.startsWith('image/')) {
-    return '';
+    throw new Error('Image files are not supported for text extraction. Consider using OCR tools first.');
   }
 
   // Unknown file type
-  throw new Error(`File type ${file.type} is not supported for text extraction. Supported: text files, JSON.`);
+  throw new Error(`File type '${file.type}' is not supported. Supported formats: TXT, JSON, XLSX, XLS, CSV`);
 }
 

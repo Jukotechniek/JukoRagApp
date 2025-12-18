@@ -232,14 +232,14 @@ async function expandQuery(
       .join("\n");
 
     const expansionPrompt = `Herschrijf deze vraag om het duidelijker te maken voor een zoeksysteem.
-Voeg relevante context toe, maar verander de betekenis niet.
+Gebruik de context om vage verwijzingen (zoals "dit", "dat", "het") te vervangen door specifieke termen.
 
 Context:
 ${contextInfo}
 
-Vraag: ${question}
+Originele vraag: ${question}
 
-Herschreven vraag (maximaal 2 zinnen):`;
+Herschreven vraag met specifieke termen (maximaal 2 zinnen):`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -266,21 +266,24 @@ Herschreven vraag (maximaal 2 zinnen):`;
 
 // ==================== HYBRID ROUTING ====================
 function routeHeuristic(question: string, memory: ConversationMemory): AgentCategory | null {
-  const q = question.toLowerCase();
+  const q = question.toLowerCase().trim();
 
-  // Document-gerelateerd
+  // Skip heuristics for very short messages (greetings, etc.)
+  if (q.length < 10) return null;
+
+  // Document-gerelateerd - moet expliciet zijn
   const wantsDoc =
-    /(pdf|schema|e-?schema|tekening|handleiding|manual|document|bestand|file|stuur|send|download|toon|laat.*zien)/i.test(
+    /(stuur.*(?:door|op|toe)|geef.*(?:document|schema|handleiding)|(?:e-?schema|handleiding|manual|document|tekening).*(?:voor|van)|download|pdf.*(?:voor|van)|zoek.*(?:document|schema|handleiding))/i.test(
       q
     );
 
   // Locatie-gerelateerd
   const wantsLocation =
-    /(waar|locatie|gevonden|ligt|staat|zit|plek|kast|hvk|lvk|hk|positie|gebouw|ruimte)\b/i.test(q);
+    /(?:waar.*(?:staat|ligt|zit|is|bevindt)|locatie.*(?:van|is)|(?:staat|ligt).*waar)\b/i.test(q);
 
-  // Technische vraag
+  // Technische vraag - specifieke technische termen
   const techish =
-    /(hoe|instellen|repar|storing|reset|parameter|sensor|motor|frequentieregelaar|vfd|alarm|fout|error|fault|defect|probleem|werkt.*niet)/i.test(
+    /(?:hoe.*(?:werkt|instellen|repareren|oplossen)|storing|defect|probleem.*met|werkt.*niet|foutmelding|alarm|reset.*(?:hoe|machine)|parameter.*(?:instellen|wijzigen))/i.test(
       q
     );
 
@@ -289,8 +292,8 @@ function routeHeuristic(question: string, memory: ConversationMemory): AgentCate
   if (wantsLocation) return "Locatie's";
   if (techish || memory.current_topic === "troubleshooting") return "Machine informatie";
 
-  // Follow-up questions inherit category
-  const isFollowUp = /^(en|wat|hoe|waar|nog|ook|verder|meer)\b/i.test(q) && memory.last_category;
+  // Follow-up questions inherit category only if clearly a follow-up
+  const isFollowUp = /^(en|wat.*daarvan|nog.*meer|ook|verder|meer.*info)\b/i.test(q) && memory.last_category;
   if (isFollowUp && memory.last_category !== "other") return memory.last_category;
 
   return null;
@@ -655,11 +658,32 @@ async function handleDocumentAgent(
   openai: OpenAI,
   rag: RAGResult,
   memory: ConversationMemory,
+  history: Message[],
   timers: Timings
 ) {
   startTimer(timers, "t_doc_lookup");
-  const topDocId = rag.sections[0]?.document_id || null;
+  let topDocId = rag.sections[0]?.document_id || null;
   let linkedDoc: { name: string; file_url: string | null } | null = null;
+
+  // Fallback: if no RAG results but we have machine numbers, search by document name
+  if (!topDocId && memory.machine_numbers.length > 0) {
+    const machineNumber = memory.machine_numbers[0];
+    console.log(`[Document Agent] No RAG results, searching by name for: ${machineNumber}`);
+    
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("id, name, file_url")
+      .eq("organization_id", organizationId)
+      .ilike("name", `%${machineNumber}%`)
+      .limit(1);
+    
+    if (docs && docs.length > 0) {
+      console.log(`[Document Agent] Found document by name: ${docs[0].name}`);
+      topDocId = docs[0].id;
+    } else {
+      console.log(`[Document Agent] No document found with name containing: ${machineNumber}`);
+    }
+  }
 
   if (topDocId) {
     const { data: doc } = await supabase
@@ -667,7 +691,43 @@ async function handleDocumentAgent(
       .select("name, file_url")
       .eq("id", topDocId)
       .maybeSingle();
-    if (doc) linkedDoc = { name: doc.name, file_url: doc.file_url };
+    
+    if (doc) {
+      // Extract storage path from file_url and generate signed URL
+      let signedUrl: string | null = null;
+      
+      if (doc.file_url) {
+        try {
+          // Extract path from URL: https://...supabase.co/storage/v1/object/documents/{path}
+          const urlMatch = doc.file_url.match(/\/documents\/(.+)$/);
+          if (urlMatch && urlMatch[1]) {
+            const storagePath = decodeURIComponent(urlMatch[1]);
+            
+            // Generate signed URL (valid for 1 hour)
+            const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+              .from("documents")
+              .createSignedUrl(storagePath, 3600); // 1 hour expiry
+            
+            if (!signedUrlError && signedUrlData) {
+              signedUrl = signedUrlData.signedUrl;
+            } else {
+              console.error("Failed to create signed URL:", signedUrlError);
+              // Fallback to public URL if signed URL fails
+              signedUrl = doc.file_url;
+            }
+          } else {
+            // If we can't extract path, use original URL
+            signedUrl = doc.file_url;
+          }
+        } catch (e) {
+          console.error("Error generating signed URL:", e);
+          // Fallback to public URL
+          signedUrl = doc.file_url;
+        }
+      }
+      
+      linkedDoc = { name: doc.name, file_url: signedUrl };
+    }
   }
   endTimer(timers, "t_doc_lookup");
 
@@ -675,38 +735,69 @@ async function handleDocumentAgent(
     ? `Machine(s) in gesprek: ${memory.machine_numbers.join(", ")}`
     : "";
 
+  const hasDocuments = rag.sections.length > 0;
+  const documentsList = hasDocuments
+    ? rag.sections.map((s, i) => `[${i + 1}] ${s.doc_name}`).join("\n")
+    : linkedDoc
+    ? `Document gevonden: ${linkedDoc.name}`
+    : "Geen documenten gevonden in de database.";
+
   const systemPrompt = `Je bent een Document Assistent.
 
 JOUW TAAK:
 - Stuur het juiste document (schema, handleiding, etc.)
-- Wees specifiek over welk document je stuurt
+- Wees specifiek en gebruik de conversatiegeschiedenis
+- Geef duidelijke feedback als er geen documenten zijn
 
-ANTWOORD:
-- Als document beschikbaar: "Hier is [documentnaam] voor [machine]. [Link volgt]"
-- Als onbekend: "Welk document zoek je precies? (bijv. E-schema, handleiding) En voor welke machine?"
+${contextHint ? `CONTEXT: ${contextHint}` : ""}
 
-${contextHint ? `\nCONTEXT: ${contextHint}` : ""}
+${linkedDoc ? `✅ DOCUMENT BESCHIKBAAR: ${linkedDoc.name} - De downloadlink wordt automatisch toegevoegd.` : ""}
+
+ANTWOORD RICHTLIJNEN:
+${linkedDoc ? `- Document is gevonden! Zeg: "Hier is ${linkedDoc.name}." (link wordt automatisch toegevoegd, zeg NIET "link volgt")` : ""}
+- Als GEEN documenten gevonden: "Ik kan geen documenten vinden voor ${memory.machine_numbers[0] || "deze machine"}. Zorg dat het document is geüpload in de Documenten sectie."
+- Bij onduidelijke vraag (geen machine nummer): "Welk type document zoek je? (E-schema, handleiding, etc.) En voor welke machine?"
 
 Beschikbare documenten:
-${rag.sections.map((s, i) => `[${i + 1}] ${s.doc_name}`).join("\n") || "Geen relevante documenten gevonden."}`;
+${documentsList}`;
+
+  // Build conversation messages with history
+  const conversationMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  // Add recent history (last 4 messages)
+  const recentHistory = history.slice(-4);
+  recentHistory.forEach((msg) => {
+    conversationMessages.push({
+      role: msg.role,
+      content: msg.content,
+    });
+  });
+
+  // Add current question
+  conversationMessages.push({ role: "user", content: question });
 
   startTimer(timers, "t_llm_answer");
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: question },
-    ],
+    messages: conversationMessages,
     max_tokens: 200,
     temperature: 0.25,
   });
   endTimer(timers, "t_llm_answer");
 
   let text = resp.choices[0]?.message?.content || "";
+  
+  // Add document link if available
   if (linkedDoc?.file_url) {
-    text += `\n\n📄 [${linkedDoc.name}](${linkedDoc.file_url})`;
-  } else if (!topDocId) {
-    text += `\n\n💡 Tip: Noem het machinenummer en documenttype voor het beste resultaat.`;
+    text += `\n\n📄 **Download:** [${linkedDoc.name}](${linkedDoc.file_url})`;
+  } else if (topDocId && !linkedDoc?.file_url) {
+    // Document found but no URL
+    text += `\n\n⚠️ Document gevonden maar downloadlink is niet beschikbaar.`;
+  } else if (rag.sections.length === 0 && memory.machine_numbers.length === 0) {
+    // No documents found and no machine number mentioned
+    text += `\n\n💡 Tip: Noem het machinenummer voor het beste resultaat (bijv. "schema voor CS50").`;
   }
 
   return { text, usage: resp.usage ?? null };
@@ -715,6 +806,7 @@ ${rag.sections.map((s, i) => `[${i + 1}] ${s.doc_name}`).join("\n") || "Geen rel
 async function handleOtherAgent(
   question: string,
   memory: ConversationMemory,
+  history: Message[],
   openai: OpenAI,
   timers: Timings
 ) {
@@ -722,29 +814,45 @@ async function handleOtherAgent(
     ? `Eerder in gesprek: ${memory.summary.slice(0, 100)}`
     : "";
 
-  const systemPrompt = `Je bent een vriendelijke technische assistent.
+  const systemPrompt = `Je bent een vriendelijke technische assistent voor industriële machines.
 
 JOUW ROL:
+- Begroet gebruikers warm en professioneel
 - Beantwoord algemene vragen kort en vriendelijk
-- Bij technische vragen: vraag naar machinenummer voor specifieke hulp
-- Verwijs naar de juiste agent als nodig
+- Bij technische vragen: vraag naar machinenummer
+- Gebruik conversatiegeschiedenis voor natuurlijke gesprekken
+- Wees behulpzaam en geduldig
 
-${contextHint ? `CONTEXT: ${contextHint}` : ""}
+${contextHint ? `\nCONTEXT: ${contextHint}` : ""}
 
 Ik kan helpen met:
-- 🔧 Machine informatie (technische vragen, storingen)
-- 📍 Locaties (waar machines/kasten staan)
-- 📄 Documenten (schema's, handleidingen)
+- 🔧 Machine informatie (technische details, storingen, onderhoud)
+- 📍 Locaties (waar machines/kasten zich bevinden)
+- 📄 Documenten (E-schema's, handleidingen, technische tekeningen)
 
-Maximaal 3-4 zinnen.`;
+Maximaal 3-4 zinnen. Wees natuurlijk en conversationeel.`;
+
+  // Build conversation messages with history
+  const conversationMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  // Add recent history (last 4 messages)
+  const recentHistory = history.slice(-4);
+  recentHistory.forEach((msg) => {
+    conversationMessages.push({
+      role: msg.role,
+      content: msg.content,
+    });
+  });
+
+  // Add current question
+  conversationMessages.push({ role: "user", content: question });
 
   startTimer(timers, "t_llm_answer");
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: question },
-    ],
+    messages: conversationMessages,
     max_tokens: 200,
     temperature: 0.4,
   });
@@ -886,6 +994,8 @@ serve(async (req) => {
     );
     endTimer(timers, "t_history");
 
+    console.log(`[${requestId}] Conversation ID: ${conversationId}, History loaded: ${history.length} messages`);
+
     // Build conversation memory
     startTimer(timers, "t_memory");
     const memory = await buildConversationMemory(history, question, openai);
@@ -895,6 +1005,7 @@ serve(async (req) => {
       machines: memory.machine_numbers,
       topic: memory.current_topic,
       hasHistory: history.length > 0,
+      historyCount: history.length,
     });
 
     // Route with memory context
@@ -905,10 +1016,12 @@ serve(async (req) => {
     if (heuristic) {
       category = heuristic;
       timers.t_llm_classify = 0;
+      console.log(`[${requestId}] Routed by heuristic: ${category}`);
     } else {
       startTimer(timers, "t_llm_classify");
       category = await classifyQuestionLLM(question, memory, openai);
       endTimer(timers, "t_llm_classify");
+      console.log(`[${requestId}] Routed by LLM: ${category}`);
     }
     endTimer(timers, "t_route");
 
@@ -969,11 +1082,11 @@ serve(async (req) => {
       responseText = r.text;
       chatUsage = r.usage;
     } else if (category === "Bestand doorsturen") {
-      const r = await handleDocumentAgent(question, organizationId, supabase, openai, rag, memory, timers);
+      const r = await handleDocumentAgent(question, organizationId, supabase, openai, rag, memory, history, timers);
       responseText = r.text;
       chatUsage = r.usage;
     } else {
-      const r = await handleOtherAgent(question, memory, openai, timers);
+      const r = await handleOtherAgent(question, memory, history, openai, timers);
       responseText = r.text;
       chatUsage = r.usage;
     }

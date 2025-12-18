@@ -359,17 +359,26 @@ const Dashboard = () => {
   };
 
   const handleClearChat = async () => {
-    if (!effectiveOrgId || isClearing) return;
+    if (!effectiveOrgId || !conversationId || isClearing) return;
 
     setIsClearing(true);
     try {
+      // Delete only messages from current conversation
       const { error } = await supabase
         .from("chat_messages")
         .delete()
-        .eq("organization_id", effectiveOrgId);
+        .eq("organization_id", effectiveOrgId)
+        .eq("conversation_id", conversationId);
 
       if (error) throw error;
 
+      // Generate new conversation ID
+      const newConversationId = createConversationId();
+      const storageKey = `chatConversationId_${effectiveOrgId}`;
+      localStorage.setItem(storageKey, newConversationId);
+      setConversationId(newConversationId);
+
+      // Clear messages and show welcome message
       setMessages([
         {
           id: "welcome",

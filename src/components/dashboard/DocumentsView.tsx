@@ -148,6 +148,16 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
     if (!files || files.length === 0 || !effectiveOrgId || !user) return;
 
     for (const file of Array.from(files)) {
+      // Validate file is not empty
+      if (file.size === 0) {
+        toast({
+          title: "Leeg bestand",
+          description: `${file.name} is leeg. Upload alleen bestanden met inhoud.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
       // Validate file type
       const validTypes = [
         "text/plain", // .txt files
@@ -157,19 +167,16 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
       ];
       
       // Also check file extension as fallback (some browsers don't set MIME type correctly)
       const fileExt = file.name.split(".").pop()?.toLowerCase();
-      const validExtensions = ["txt", "md", "csv", "json", "pdf", "docx", "xlsx", "png", "jpg", "jpeg"];
+      const validExtensions = ["txt", "md", "csv", "json", "pdf", "docx", "xlsx"];
       
       if (!validTypes.includes(file.type) && !validExtensions.includes(fileExt || "")) {
         toast({
           title: "Ongeldig bestandstype",
-          description: `${file.name} heeft een ongeldig type. Toegestaan: TXT, MD, CSV, JSON, PDF, DOCX, XLSX en afbeeldingen.`,
+          description: `${file.name} heeft een ongeldig type. Toegestaan: TXT, MD, CSV, JSON, PDF, DOCX, XLSX.`,
           variant: "destructive",
         });
         continue;
@@ -180,6 +187,42 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         toast({
           title: "Bestand te groot",
           description: `${file.name} is te groot. Maximum grootte is 50MB.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      // For text-based files, check if they have meaningful content (not just whitespace)
+      const textBasedTypes = ["text/plain", "text/markdown", "text/csv", "application/json"];
+      const textBasedExtensions = ["txt", "md", "csv", "json"];
+      
+      if (textBasedTypes.includes(file.type) || textBasedExtensions.includes(fileExt || "")) {
+        try {
+          // Clone the file to avoid consuming the stream
+          const fileClone = file.slice(0, file.size, file.type);
+          const text = await fileClone.text();
+          // Check if file has meaningful content (at least some non-whitespace characters)
+          const trimmedText = text.trim();
+          if (trimmedText.length === 0) {
+            toast({
+              title: "Leeg bestand",
+              description: `${file.name} bevat alleen lege regels. Upload alleen bestanden met inhoud.`,
+              variant: "destructive",
+            });
+            continue;
+          }
+        } catch (error) {
+          // If we can't read the file, skip this validation but continue
+          console.warn(`Could not validate content of ${file.name}:`, error);
+        }
+      }
+
+      // Check if file with same name already exists
+      const existingDoc = documents.find(doc => doc.name === file.name);
+      if (existingDoc) {
+        toast({
+          title: "Bestand bestaat al",
+          description: `Een bestand met de naam "${file.name}" bestaat al. Verwijder het bestaande bestand eerst of gebruik een andere naam.`,
           variant: "destructive",
         });
         continue;
@@ -196,8 +239,9 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
         if (uploadError) throw uploadError;
 
-        // Get public URL
-        const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName);
+        // Construct storage URL without /public/ (direct storage access)
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const storageUrl = `${supabaseUrl}/storage/v1/object/documents/${encodeURIComponent(fileName)}`;
 
         // Save document metadata to database
         const { data: savedDocument, error: dbError } = await (supabase
@@ -207,7 +251,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             name: file.name,
             file_type: file.type,
             file_size: file.size,
-            file_url: urlData.publicUrl,
+            file_url: storageUrl,
             uploaded_by: user.id,
           })
           .select()
@@ -228,38 +272,38 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         });
 
         // Process document for RAG (chunking + embeddings) in background
+        // N8N will fetch the file from Supabase Storage and extract text itself
         if (savedDocument) {
-          // Try to extract text and process for RAG
           try {
-            const textContent = await extractTextFromFile(file);
+            // Show processing toast
+            toast({
+              title: "Document wordt verwerkt...",
+              description: `${file.name} wordt verwerkt voor RAG.`,
+            });
             
-            if (textContent && textContent.trim().length > 0) {
-              // Process in background (don't wait for completion)
-                processDocumentForRAG((savedDocument as any).id, textContent, effectiveOrgId)
+            // Process in background - only send documentId and organizationId
+            // N8N will handle file download and text extraction
+            processDocumentForRAG((savedDocument as any).id, effectiveOrgId)
                 .then(() => {
+                console.log(`Document processed successfully: ${file.name}`);
                   toast({
-                    title: "Document verwerkt",
-                    description: `${file.name} is verwerkt en klaar voor gebruik in RAG.`,
+                  title: "✅ Document verwerkt",
+                  description: `${file.name} is verwerkt en klaar voor gebruik in de chat.`,
                   });
                 })
                 .catch((error) => {
+                console.error(`Document processing failed for ${file.name}:`, error);
                   toast({
-                    title: "Waarschuwing",
-                    description: `Document geüpload, maar RAG verwerking mislukt: ${error.message || 'Onbekende fout'}.`,
+                  title: "❌ Verwerking mislukt",
+                  description: `${error.message || 'Onbekende fout tijdens RAG verwerking.'}`,
                     variant: "destructive",
-                  });
                 });
-            } else {
-              toast({
-                title: "Document geüpload",
-                description: `${file.name} is geüpload, maar kan niet worden verwerkt voor RAG. ${file.type.includes('xlsx') || file.type.includes('docx') || file.type.includes('pdf') ? 'Dit bestandstype vereist een speciale parser.' : 'Bestandstype niet ondersteund voor text extractie.'}`,
-                variant: "default",
               });
-            }
-          } catch (extractError: any) {
+          } catch (error: any) {
+            console.error(`Failed to start processing for ${file.name}:`, error);
             toast({
-              title: "Text extractie mislukt",
-              description: `${file.name} is geüpload, maar text extractie mislukt: ${extractError.message || 'Onbekende fout'}.`,
+              title: "❌ Verwerking mislukt",
+              description: error.message || 'Onbekende fout bij starten van verwerking.',
               variant: "destructive",
             });
           }
@@ -275,7 +319,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         });
       }
     }
-  }, [toast, user, effectiveOrgId]);
+  }, [toast, user, effectiveOrgId, documents]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -390,7 +434,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+          accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx"
           className="hidden"
           onChange={(e) => handleFileSelect(e.target.files)}
         />
@@ -405,7 +449,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             of klik om te bladeren
           </p>
           <p className="text-xs text-muted-foreground">
-            TXT, MD, CSV, JSON, PDF, DOCX, XLSX, PNG, JPG (max. 50MB)
+            Verwerkbaar: PDF, XLSX, TXT, MD, CSV, JSON • Ook toegestaan: DOCX (max. 50MB)
           </p>
         </div>
       </div>

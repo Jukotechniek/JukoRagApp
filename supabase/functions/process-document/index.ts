@@ -194,8 +194,8 @@ serve(async (req) => {
     // 2. Generate embeddings for all chunks (batch processing)
     const texts = chunks.map(chunk => chunk.text);
     
-    // OpenAI allows up to 2048 inputs per batch, but we'll do smaller batches for safety
-    const embeddingBatchSize = 100;
+    // Smaller batch size to avoid memory limits in Edge Functions
+    const embeddingBatchSize = 10;
     const allEmbeddings: number[][] = [];
     let totalEmbeddingTokens = 0;
 
@@ -271,8 +271,8 @@ serve(async (req) => {
       },
     }));
 
-    // 4. Insert sections in batches to avoid overwhelming the database
-    const dbBatchSize = 10;
+    // 4. Insert sections in smaller batches for memory efficiency
+    const dbBatchSize = 5;
     for (let i = 0; i < sectionsToInsert.length; i += dbBatchSize) {
       const batch = sectionsToInsert.slice(i, i + dbBatchSize);
       
