@@ -254,39 +254,26 @@ const Dashboard = () => {
         },
       });
 
-      // Call Edge Function for chat completion with RAG
-      // This ensures organization-specific document access and keeps API keys secure
+      // Call chat via N8N webhook (or fallback to Edge Function)
       let aiResponse: string;
       try {
-        const { data, error } = await supabase.functions.invoke('chat', {
-          body: {
-            question: userMessageContent,
-            organizationId: effectiveOrgId,
-            userId: user!.id,
-            conversationId,
-          },
+        const { sendChatMessage } = await import('@/lib/chat');
+        const chatResponse = await sendChatMessage({
+          question: userMessageContent,
+          organizationId: effectiveOrgId,
+          userId: user!.id,
+          conversationId,
         });
 
-        if (error) {
-          throw new Error(error.message || 'Failed to call chat function');
+        if (!chatResponse.success) {
+          throw new Error(chatResponse.error || 'Chat processing failed');
         }
 
-        if (!data?.success) {
-          throw new Error(data?.error || 'Chat function returned an error');
-        }
+        aiResponse = chatResponse.response || 'Sorry, ik kon geen antwoord genereren.';
 
-        aiResponse = data.response || 'Sorry, ik kon geen antwoord genereren.';
-
-        // Log debug info if available
-        if (data.debug) {
-          console.log('[Chat] Debug info:', {
-            usedRAG: data.usedRAG,
-            hasDocuments: data.hasDocuments,
-            hasContext: data.hasContext,
-            contextLength: data.contextLength,
-            embeddingGenerated: data.debug.embeddingGenerated,
-            sectionsFound: data.debug.sectionsFound,
-          });
+        // Log metadata if available
+        if (chatResponse.metadata) {
+          console.log('[Chat] Metadata:', chatResponse.metadata);
         }
 
         // Save AI response to database
@@ -312,10 +299,18 @@ const Dashboard = () => {
           ]);
         }
       } catch (chatError: any) {
-        console.error('Error calling chat function:', chatError);
+        console.error('Error calling chat:', chatError);
         
-        // Fallback response
-        const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Zorg ervoor dat de Edge Function is geconfigureerd en dat er documenten zijn geüpload.";
+        // Check if it's a configuration error
+        const isConfigError = chatError.message?.includes('N8N chat webhook is not configured');
+        
+        const errorMessage = isConfigError
+          ? "N8N chat webhook is niet geconfigureerd. Voeg VITE_N8N_CHAT_WEBHOOK_URL toe aan je .env bestand."
+          : chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.";
+        
+        const fallbackResponse = isConfigError
+          ? "Sorry, de chat is niet geconfigureerd. Neem contact op met de beheerder."
+          : "Sorry, ik kon geen antwoord genereren. Er is een fout opgetreden bij het verwerken van je vraag.";
         
         const { data: aiMessage } = await (supabase
           .from("chat_messages") as any)
@@ -341,7 +336,7 @@ const Dashboard = () => {
 
         toast({
           title: "Fout",
-          description: chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.",
+          description: errorMessage,
           variant: "destructive",
         });
       } finally {

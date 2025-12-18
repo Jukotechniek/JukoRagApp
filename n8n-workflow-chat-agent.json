@@ -1,0 +1,279 @@
+{
+  "name": "AI Agent Chat",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "webhook-node",
+      "name": "Webhook",
+      "webhookId": "chat-agent-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "question-assignment",
+              "name": "question",
+              "value": "={{ $json.body.question }}",
+              "type": "string"
+            },
+            {
+              "id": "org-assignment",
+              "name": "organizationId",
+              "value": "={{ $json.body.organizationId }}",
+              "type": "string"
+            },
+            {
+              "id": "user-assignment",
+              "name": "userId",
+              "value": "={{ $json.body.userId }}",
+              "type": "string"
+            },
+            {
+              "id": "conv-assignment",
+              "name": "conversationId",
+              "value": "={{ $json.body.conversationId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -40,
+        0
+      ],
+      "id": "parse-input",
+      "name": "Parse Input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "options": {
+          "systemMessage": "Je bent een technische RAG-assistent voor monteurs in de industrie.\n\nBELANGRIJKSTE REGELS (ABSOLUUT):\n1. Je MOET altijd eerst informatie ophalen via de Supabase Vector Store.\n2. Je mag NOOIT antwoorden zonder documentbronnen.\n3. Je mag NOOIT aannames doen of zelf kennis verzinnen.\n4. Geen documenten = geen antwoord.\n\nWERKWIJZE:\n- Analyseer de vraag van de monteur\n- Gebruik ALTIJD de Supabase Vector Store om relevante documentatie op te halen\n- Beantwoord de vraag uitsluitend op basis van de gevonden documentfragmenten\n\nALS ER GEEN DOCUMENTEN ZIJN:\nZeg exact:\n\"Ik kan dit niet beantwoorden omdat ik geen relevante informatie in de documentatie kan vinden.\nKun je aangeven:\n- om welke machine het gaat?\n- het typenummer of serienummer?\n- of een foutcode of onderdeel?\"\n\nANTWOORDSTIJL:\n- Kort\n- Technisch\n- Praktisch\n- Gericht op storingen, onderhoud en werking\n- Gebruik opsomming bij stappen\n- Vermeld altijd waar de informatie vandaan komt (document / pagina indien bekend)\n\nVERBODEN:\n- Algemene kennis\n- Internetkennis\n- Eigen interpretaties\n- \"Waarschijnlijk\", \"meestal\", \"ik denk dat\""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        160,
+        0
+      ],
+      "id": "ai-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Je taak is het ophalen van ALLE relevante documentfragmenten voor de vraag van de monteur.\n\nZoek altijd semantisch in de vector database.\nGebruik de exacte betekenis van de vraag, inclusief technische termen, foutcodes, componentnamen, machines, sensoren, PLC's en elektrische onderdelen.\n\nRetourneer:\n- Alleen documentfragmenten die inhoudelijk relevant zijn\n- Inclusief metadata zoals documentnaam, paginanummer, sectie of titel (indien beschikbaar)\n- Geen samenvatting, geen interpretatie, alleen ruwe inhoud\n\nAls er geen relevante fragmenten zijn:\n- Retourneer een lege lijst\n- Voeg GEEN eigen kennis toe",
+        "tableName": {
+          "__rl": true,
+          "value": "document_sections",
+          "mode": "list",
+          "cachedResultName": "document_sections"
+        },
+        "options": {
+          "filter": {
+            "organization_id": "={{ $('Parse Input').item.json.organizationId }}"
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        360,
+        200
+      ],
+      "id": "vector-store",
+      "name": "Supabase Vector Store"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        360,
+        400
+      ],
+      "id": "embeddings",
+      "name": "Embeddings OpenAI"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        200
+      ],
+      "id": "chat-model",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Parse Input').item.json.conversationId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        200
+      ],
+      "id": "memory",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response for frontend\nconst aiResponse = $input.first().json;\n\n// Extract the text response from the AI Agent output\n// The AI Agent returns the response in different formats depending on the node version\nlet responseText = '';\n\nif (aiResponse.output) {\n  // New format\n  responseText = aiResponse.output;\n} else if (aiResponse.text) {\n  // Alternative format\n  responseText = aiResponse.text;\n} else if (aiResponse.response) {\n  // Another format\n  responseText = aiResponse.response;\n} else if (typeof aiResponse === 'string') {\n  // Direct string\n  responseText = aiResponse;\n} else if (aiResponse.message) {\n  // Message format\n  responseText = aiResponse.message.content || aiResponse.message.text || '';\n} else if (aiResponse.choices && aiResponse.choices[0]) {\n  // OpenAI format\n  responseText = aiResponse.choices[0].message?.content || '';\n} else {\n  // Fallback: stringify the whole object\n  responseText = JSON.stringify(aiResponse);\n}\n\n// Return in the format expected by frontend\nreturn {\n  json: {\n    success: true,\n    response: responseText.trim() || 'Geen antwoord ontvangen van AI Agent.',\n    metadata: {\n      organizationId: $('Parse Input').item.json.organizationId,\n      conversationId: $('Parse Input').item.json.conversationId,\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "format-response",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        640,
+        0
+      ],
+      "id": "respond-webhook",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-27T00:00:00.000Z",
+  "versionId": "1"
+}
+

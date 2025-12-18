@@ -82,6 +82,7 @@ export type Database = {
           file_size: number;
           file_url: string | null;
           uploaded_by: string | null;
+          use_for_rag: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -93,6 +94,7 @@ export type Database = {
           file_size: number;
           file_url?: string | null;
           uploaded_by?: string | null;
+          use_for_rag?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -104,6 +106,7 @@ export type Database = {
           file_size?: number;
           file_url?: string | null;
           uploaded_by?: string | null;
+          use_for_rag?: boolean;
           created_at?: string;
           updated_at?: string;
         };

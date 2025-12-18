@@ -32,6 +32,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
 import { processDocumentForRAG, extractTextFromFile } from "@/lib/document-processing";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import type { Database } from "@/types/database";
 
 type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
@@ -44,6 +46,7 @@ interface Document {
   uploadedBy: string | null;
   uploadedAt: string;
   file_url: string | null;
+  use_for_rag: boolean;
 }
 
 const typeIcons = {
@@ -125,6 +128,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             uploadedBy: doc.users?.name || "Onbekend",
             uploadedAt: formatDistanceToNow(new Date(doc.created_at), { addSuffix: true, locale: nl }),
             file_url: doc.file_url,
+            use_for_rag: doc.use_for_rag ?? false,
           };
         });
         setDocuments(formattedDocs);
@@ -253,6 +257,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             file_size: file.size,
             file_url: storageUrl,
             uploaded_by: user.id,
+            use_for_rag: false, // Default: niet gebruiken voor RAG
           })
           .select()
           .single();
@@ -268,46 +273,10 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
         toast({
           title: "Document geüpload",
-          description: `${file.name} is succesvol geüpload. Verwerking voor RAG wordt gestart...`,
+          description: `${file.name} is succesvol geüpload. Zet RAG aan om het document te gebruiken in de chat.`,
         });
 
-        // Process document for RAG (chunking + embeddings) in background
-        // N8N will fetch the file from Supabase Storage and extract text itself
-        if (savedDocument) {
-          try {
-            // Show processing toast
-            toast({
-              title: "Document wordt verwerkt...",
-              description: `${file.name} wordt verwerkt voor RAG.`,
-            });
-            
-            // Process in background - only send documentId and organizationId
-            // N8N will handle file download and text extraction
-            processDocumentForRAG((savedDocument as any).id, effectiveOrgId)
-                .then(() => {
-                console.log(`Document processed successfully: ${file.name}`);
-                  toast({
-                  title: "✅ Document verwerkt",
-                  description: `${file.name} is verwerkt en klaar voor gebruik in de chat.`,
-                  });
-                })
-                .catch((error) => {
-                console.error(`Document processing failed for ${file.name}:`, error);
-                  toast({
-                  title: "❌ Verwerking mislukt",
-                  description: `${error.message || 'Onbekende fout tijdens RAG verwerking.'}`,
-                    variant: "destructive",
-                });
-              });
-          } catch (error: any) {
-            console.error(`Failed to start processing for ${file.name}:`, error);
-            toast({
-              title: "❌ Verwerking mislukt",
-              description: error.message || 'Onbekende fout bij starten van verwerking.',
-              variant: "destructive",
-            });
-          }
-        }
+        // Document wordt niet automatisch verwerkt - gebruiker moet RAG aanzetten
 
         // Reload documents
         await loadDocuments();
@@ -431,6 +400,75 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
     }
   };
 
+  const handleToggleRAG = async (doc: Document, newValue: boolean) => {
+    try {
+      const { data, error } = await supabase
+        .from("documents")
+        .update({ use_for_rag: newValue })
+        .eq("id", doc.id)
+        .eq("organization_id", effectiveOrgId)
+        .select();
+
+      if (error) {
+        console.error("Error updating use_for_rag:", error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error("Geen document gevonden om te updaten");
+      }
+
+      // Update local state
+      setDocuments((prevDocs) =>
+        prevDocs.map((d) => (d.id === doc.id ? { ...d, use_for_rag: newValue } : d))
+      );
+
+      if (newValue) {
+        // RAG ingeschakeld - verwerk document voor RAG
+        toast({
+          title: "RAG ingeschakeld",
+          description: `${doc.name} wordt verwerkt voor RAG...`,
+        });
+
+        try {
+          await processDocumentForRAG(doc.id, effectiveOrgId);
+          toast({
+            title: "✅ Document verwerkt",
+            description: `${doc.name} is verwerkt en klaar voor gebruik in de chat.`,
+          });
+        } catch (error: any) {
+          console.error(`Document processing failed for ${doc.name}:`, error);
+          toast({
+            title: "⚠️ RAG ingeschakeld, maar verwerking mislukt",
+            description: `${doc.name} is ingeschakeld voor RAG, maar verwerking is mislukt. Probeer het later opnieuw.`,
+            variant: "destructive",
+          });
+        }
+      } else {
+        // RAG uitgeschakeld - verwijder document sections (embeddings)
+        const { error: sectionsError } = await supabase
+          .from("document_sections")
+          .delete()
+          .eq("document_id", doc.id);
+
+        if (sectionsError) {
+          console.error("Error deleting document sections:", sectionsError);
+        }
+
+        toast({
+          title: "RAG uitgeschakeld",
+          description: `${doc.name} wordt niet meer gebruikt voor RAG queries. Embeddings zijn verwijderd.`,
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Fout",
+        description: error.message || "Kon RAG instelling niet updaten.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -524,6 +562,19 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                     <span>{doc.uploadedAt}</span>
                     <span>•</span>
                     <span>{doc.uploadedBy}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={`rag-${doc.id}`} className="text-sm text-muted-foreground cursor-pointer">
+                      RAG
+                    </Label>
+                    <Switch
+                      id={`rag-${doc.id}`}
+                      checked={doc.use_for_rag}
+                      onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
+                    />
                   </div>
                 </div>
 

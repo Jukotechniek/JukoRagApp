@@ -247,11 +247,12 @@ async function findDocuments(
   // Strategy 2: Fuzzy search by name (for specific document requests)
   if (searchTerms.length > 0) {
     for (const term of searchTerms) {
-      // Try exact match first
+      // Try exact match first - only include documents enabled for RAG
       const { data: exactDocs } = await supabase
         .from("documents")
         .select("id, name, file_url")
         .eq("organization_id", organizationId)
+        .eq("use_for_rag", true)
         .ilike("name", `%${term}%`)
         .limit(2);
 
@@ -909,7 +910,10 @@ serve(async (req) => {
       supabase
     );
 
-    // Generate answer (use ORIGINAL question for natural conversation)
+    // Generate answer using direct OpenAI
+    // Note: Chat is now handled via N8N webhook from frontend
+    // This Edge Function is kept for backwards compatibility but should not be used
+    console.log(`[${requestId}] Using direct OpenAI (Edge Function - consider using N8N instead)`);
     const { text: responseText, usage: chatUsage, attachedDocs } = await handleQuestion(
       question, // Use original question so response feels natural
       history,

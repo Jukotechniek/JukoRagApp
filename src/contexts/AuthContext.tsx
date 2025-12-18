@@ -82,23 +82,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
-      // Ignore initial SIGNED_IN event if we're already loading from getSession
-      // This prevents duplicate loadUserData calls when both getSession and onAuthStateChange fire
-      if (event === 'SIGNED_IN' && sessionLoaded) {
-        return;
-      }
-      
       clearTimeout(timeoutId);
       
       if (session?.user) {
         setSupabaseUser(session.user);
-        // Only load if not already loading
-        if (!(loadUserData as any).inProgress) {
+        
+        // Only load if not already loading and not from initial getSession
+        if (!(loadUserData as any).inProgress && !sessionLoaded) {
+          // Set loading to true while we load
+          setLoading(true);
+          
           try {
-            await loadUserData(session.user.id);
+            // Load user data with timeout
+            const loadUserPromise = loadUserData(session.user.id);
+            const timeoutPromise = new Promise<void>((resolve) => 
+              setTimeout(() => {
+                if (mounted) {
+                  setLoading(false);
+                }
+                resolve();
+              }, 5000)
+            );
+            await Promise.race([loadUserPromise, timeoutPromise]);
           } catch (error) {
-            setLoading(false);
+            console.error("Error in onAuthStateChange loadUserData:", error);
+            if (mounted) {
+              setLoading(false);
+            }
           }
+        } else if (sessionLoaded) {
+          // Reset the flag after first load
+          sessionLoaded = false;
+          // If we already loaded from getSession, just ensure loading is false
+          setLoading(false);
+        } else {
+          // If already loading, set a timeout to ensure we don't hang forever
+          setTimeout(() => {
+            if (mounted) {
+              setLoading(false);
+            }
+          }, 2000);
         }
       } else {
         setSupabaseUser(null);
@@ -315,12 +338,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (data.user) {
-        // Load user data - this might fail if user doesn't exist in users table
-        await loadUserData(data.user.id);
+        // Don't wait for loadUserData - let onAuthStateChange handle it
+        // This prevents the login from hanging if loadUserData is slow
+        // The onAuthStateChange listener will automatically trigger and load user data
+        setSupabaseUser(data.user);
         
-        // Check if user was loaded successfully
-        // Give it a moment for the state to update
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Try to load user data in the background, but don't wait for it
+        loadUserData(data.user.id).catch((err) => {
+          console.error("Error loading user data in background:", err);
+        });
         
         return true;
       }
@@ -387,8 +413,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (linkError) throw linkError;
 
-      // Reload user data
-      await loadUserData(authData.user.id);
+      // Set supabaseUser immediately so redirect can happen
+      setSupabaseUser(authData.user);
+      
+      // Load user data in background, but don't wait for it
+      // This prevents registration from hanging if loadUserData is slow
+      loadUserData(authData.user.id).catch((err) => {
+        console.error("Error loading user data after registration:", err);
+      });
+      
       return true;
     } catch (error: any) {
       console.error("Registration error:", error);

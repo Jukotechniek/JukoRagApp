@@ -25,63 +25,100 @@ const Auth = () => {
     setIsLogin(searchParams.get("mode") !== "register");
   }, [searchParams]);
 
-  const { login, register, user, isAuthenticated, loading } = useAuth();
+  const { login, register, user, isAuthenticated, loading, supabaseUser } = useAuth();
 
-  // Redirect when authenticated (but wait for loading to finish)
+  // Redirect when authenticated - redirect as soon as we have supabaseUser (auth successful)
+  // Don't wait for full user data load to prevent hanging
   useEffect(() => {
-    if (!loading && isAuthenticated && user) {
-      toast({
-        title: "Welkom terug!",
-        description: "U bent succesvol ingelogd.",
-      });
-      navigate("/dashboard");
+    if (supabaseUser && !isLoading) {
+      // Small delay to ensure state is settled, then redirect
+      const redirectTimer = setTimeout(() => {
+        toast({
+          title: "Welkom terug!",
+          description: "U bent succesvol ingelogd.",
+        });
+        navigate("/dashboard");
+      }, 100);
+      
+      return () => clearTimeout(redirectTimer);
     }
-  }, [isAuthenticated, user, loading, navigate, toast]);
+  }, [supabaseUser, isLoading, navigate, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (isLogin) {
-      // Login logica
-      const success = await login(formData.email, formData.password);
-      if (!success) {
-        toast({
-          title: "Inloggen mislukt",
-          description: "Ongeldige email of wachtwoord. Probeer het opnieuw.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      }
-      // Redirect wordt afgehandeld door useEffect boven
-    } else {
-      // Registratie logica
-      if (!formData.name || !formData.organization) {
-        toast({
-          title: "Velden verplicht",
-          description: "Vul alle velden in.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
+    // Safety timeout - always reset loading after max 10 seconds
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 10000);
 
-      const success = await register(
-        formData.email,
-        formData.password,
-        formData.name,
-        formData.organization
-      );
+    try {
+      if (isLogin) {
+        // Login logica
+        const success = await login(formData.email, formData.password);
+        clearTimeout(safetyTimeout);
+        
+        if (!success) {
+          toast({
+            title: "Inloggen mislukt",
+            description: "Ongeldige email of wachtwoord. Probeer het opnieuw.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+        } else {
+          // Login successful - reset loading after short delay
+          // Redirect will happen via useEffect when supabaseUser is set
+          setTimeout(() => {
+            setIsLoading(false);
+          }, 500);
+        }
+      } else {
+        // Registratie logica
+        if (!formData.name || !formData.organization) {
+          clearTimeout(safetyTimeout);
+          toast({
+            title: "Velden verplicht",
+            description: "Vul alle velden in.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
 
-      if (!success) {
-        toast({
-          title: "Registratie mislukt",
-          description: "Er is iets misgegaan. Probeer het opnieuw.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
+        const success = await register(
+          formData.email,
+          formData.password,
+          formData.name,
+          formData.organization
+        );
+        
+        clearTimeout(safetyTimeout);
+
+        if (!success) {
+          toast({
+            title: "Registratie mislukt",
+            description: "Er is iets misgegaan. Probeer het opnieuw.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+        } else {
+          // Registration successful - reset loading after short delay
+          // Redirect will happen via useEffect when supabaseUser is set
+          setTimeout(() => {
+            setIsLoading(false);
+          }, 500);
+        }
       }
-      // Redirect wordt afgehandeld door useEffect boven
+    } catch (error) {
+      clearTimeout(safetyTimeout);
+      console.error("Auth error:", error);
+      toast({
+        title: "Er is een fout opgetreden",
+        description: "Probeer het opnieuw of ververs de pagina.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
     }
   };
 
