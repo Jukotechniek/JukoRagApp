@@ -21,7 +21,7 @@ const SettingsView = () => {
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
     email: user?.email || "",
-    organization: user?.organization || "",
+    organization: user?.organization_id || "",
     phone: "",
   });
   const [notifications, setNotifications] = useState({
