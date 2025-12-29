@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +24,8 @@ import {
   Menu,
   Coins,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import OrganizationsView from "@/components/dashboard/OrganizationsView";
 import UsersView from "@/components/dashboard/UsersView";
 import AnalyticsView from "@/components/dashboard/AnalyticsView";
@@ -41,9 +44,9 @@ interface Message {
   content: string;
 }
 
-const Dashboard = () => {
+export default function DashboardPage() {
   const { user, logout, loading, supabaseUser } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const { toast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
@@ -61,9 +64,9 @@ const Dashboard = () => {
   // that's OK (user data is loading in background)
   useEffect(() => {
     if (!loading && !user && !supabaseUser) {
-      navigate("/auth");
+      router.push("/auth");
     }
-  }, [user, supabaseUser, loading, navigate]);
+  }, [user, supabaseUser, loading, router]);
 
   // Load organizations for admin selector
   useEffect(() => {
@@ -264,7 +267,7 @@ const Dashboard = () => {
         },
       });
 
-      // Call chat via N8N webhook (or fallback to Edge Function)
+      // Call chat via Next.js API route
       let aiResponse: string;
       try {
         const { sendChatMessage } = await import('@/lib/chat');
@@ -286,84 +289,8 @@ const Dashboard = () => {
           console.log('[Chat] Metadata:', chatResponse.metadata);
         }
 
-        // Track token usage if metadata contains usage info
-        // Always add 686 prompt tokens for system prompt and context
-        const SYSTEM_PROMPT_TOKENS = 686;
-        
-        if (chatResponse.metadata?.usage && effectiveOrgId && user) {
-          try {
-            const { trackTokenUsage } = await import('@/lib/openai');
-            const usage = chatResponse.metadata.usage;
-            
-            // Add system prompt tokens to prompt tokens
-            const adjustedPromptTokens = (usage.prompt_tokens || 0) + SYSTEM_PROMPT_TOKENS;
-            const adjustedTotalTokens = adjustedPromptTokens + (usage.completion_tokens || 0);
-            
-            await trackTokenUsage(
-              effectiveOrgId,
-              user.id,
-              chatResponse.metadata.model || 'gpt-4o-mini',
-              'chat',
-              adjustedPromptTokens,
-              usage.completion_tokens || 0,
-              adjustedTotalTokens,
-              {
-                conversation_id: conversationId,
-                question_length: userMessageContent.length,
-                response_length: aiResponse.length,
-                system_prompt_tokens: SYSTEM_PROMPT_TOKENS,
-                reported_prompt_tokens: usage.prompt_tokens || 0,
-                ...chatResponse.metadata,
-              }
-            );
-            
-            console.log('[Chat] Token usage tracked:', { 
-              adjustedPromptTokens, 
-              completionTokens: usage.completion_tokens || 0,
-              adjustedTotalTokens 
-            });
-          } catch (tokenTrackError) {
-            console.error('Error tracking tokens:', tokenTrackError);
-            // Don't fail the chat if token tracking fails
-          }
-        } else if (effectiveOrgId && user) {
-          // Fallback: estimate tokens if no usage info provided
-          // Rough estimate: ~4 characters per token for English/Dutch
-          const estimatedPromptTokens = Math.ceil(userMessageContent.length / 4) + SYSTEM_PROMPT_TOKENS;
-          const estimatedCompletionTokens = Math.ceil(aiResponse.length / 4);
-          const estimatedTotalTokens = estimatedPromptTokens + estimatedCompletionTokens;
-
-          try {
-            const { trackTokenUsage } = await import('@/lib/openai');
-            
-            await trackTokenUsage(
-              effectiveOrgId,
-              user.id,
-              'gpt-4o-mini',
-              'chat',
-              estimatedPromptTokens,
-              estimatedCompletionTokens,
-              estimatedTotalTokens,
-              {
-                conversation_id: conversationId,
-                question_length: userMessageContent.length,
-                response_length: aiResponse.length,
-                system_prompt_tokens: SYSTEM_PROMPT_TOKENS,
-                estimated: true,
-                note: 'Token usage estimated - N8N did not provide usage data',
-              }
-            );
-            
-            console.log('[Chat] Estimated token usage tracked:', { 
-              estimatedPromptTokens, 
-              estimatedCompletionTokens, 
-              estimatedTotalTokens 
-            });
-          } catch (tokenTrackError) {
-            console.error('Error tracking estimated tokens:', tokenTrackError);
-            // Don't fail the chat if token tracking fails
-          }
-        }
+        // Token usage is already tracked by the API route
+        // The API route handles token tracking internally
 
         // Save AI response to database
         const { data: aiMessage, error: aiError } = await (supabase
@@ -390,16 +317,8 @@ const Dashboard = () => {
       } catch (chatError: any) {
         console.error('Error calling chat:', chatError);
         
-        // Check if it's a configuration error
-        const isConfigError = chatError.message?.includes('N8N chat webhook is not configured');
-        
-        const errorMessage = isConfigError
-          ? "N8N chat webhook is niet geconfigureerd. Voeg VITE_N8N_CHAT_WEBHOOK_URL toe aan je .env bestand."
-          : chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.";
-        
-        const fallbackResponse = isConfigError
-          ? "Sorry, de chat is niet geconfigureerd. Neem contact op met de beheerder."
-          : "Sorry, ik kon geen antwoord genereren. Er is een fout opgetreden bij het verwerken van je vraag.";
+        const errorMessage = chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.";
+        const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Er is een fout opgetreden bij het verwerken van je vraag.";
         
         const { data: aiMessage } = await (supabase
           .from("chat_messages") as any)
@@ -526,7 +445,7 @@ const Dashboard = () => {
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-4 border-b border-border/30">
-            <Link to="/" className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-[hsl(15_80%_55%)] flex items-center justify-center">
                 <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
@@ -576,7 +495,7 @@ const Dashboard = () => {
               className="w-full"
               onClick={() => {
                 logout();
-                navigate("/auth");
+                router.push("/auth");
               }}
             >
               <LogOut className="w-4 h-4 mr-2" />
@@ -709,6 +628,5 @@ const Dashboard = () => {
       </main>
     </div>
   );
-};
+}
 
-export default Dashboard;

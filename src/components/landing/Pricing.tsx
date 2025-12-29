@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 
 const plans = [
   {
@@ -111,7 +111,7 @@ export const Pricing = () => {
                 ))}
               </ul>
 
-              <Link to="/auth?mode=register" className="block">
+              <Link href="/auth?mode=register" className="block">
                 <Button
                   variant={plan.popular ? "hero" : "outline"}
                   className="w-full"

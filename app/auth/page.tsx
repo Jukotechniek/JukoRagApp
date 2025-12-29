@@ -1,5 +1,8 @@
+'use client';
+
 import { useState, useEffect } from "react";
-import { useSearchParams, Link, useNavigate } from "react-router-dom";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,9 +10,9 @@ import { Bot, ArrowLeft, Mail, Lock, User, Building } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
-const Auth = () => {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+export default function AuthPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [isLoading, setIsLoading] = useState(false);
@@ -37,12 +40,12 @@ const Auth = () => {
           title: "Welkom terug!",
           description: "U bent succesvol ingelogd.",
         });
-        navigate("/dashboard");
+        router.push("/dashboard");
       }, 100);
       
       return () => clearTimeout(redirectTimer);
     }
-  }, [supabaseUser, isLoading, navigate, toast]);
+  }, [supabaseUser, isLoading, router, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +132,7 @@ const Auth = () => {
         <div className="w-full max-w-md">
           {/* Back Link */}
           <Link
-            to="/"
+            href="/"
             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -278,6 +281,5 @@ const Auth = () => {
       </div>
     </div>
   );
-};
+}
 
-export default Auth;

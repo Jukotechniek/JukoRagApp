@@ -1,5 +1,7 @@
+"use client";
+
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Bot } from "lucide-react";
 
@@ -11,7 +13,7 @@ export const Navbar = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link href="/" className="flex items-center gap-2 group">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-[hsl(15_80%_55%)] flex items-center justify-center shadow-lg shadow-primary/30 group-hover:shadow-xl group-hover:shadow-primary/40 transition-all duration-300">
               <Bot className="w-6 h-6 text-primary-foreground" />
             </div>
@@ -35,10 +37,10 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <Link to="/auth">
+            <Link href="/auth">
               <Button variant="ghost">Inloggen</Button>
             </Link>
-            <Link to="/auth?mode=register">
+            <Link href="/auth?mode=register">
               <Button variant="hero">Start Gratis</Button>
             </Link>
           </div>
@@ -78,12 +80,12 @@ export const Navbar = () => {
                 Hoe het werkt
               </a>
               <div className="flex flex-col gap-2 pt-4 border-t border-border/30">
-                <Link to="/auth" onClick={() => setIsOpen(false)}>
+                <Link href="/auth" onClick={() => setIsOpen(false)}>
                   <Button variant="ghost" className="w-full justify-start">
                     Inloggen
                   </Button>
                 </Link>
-                <Link to="/auth?mode=register" onClick={() => setIsOpen(false)}>
+                <Link href="/auth?mode=register" onClick={() => setIsOpen(false)}>
                   <Button variant="hero" className="w-full">
                     Start Gratis
                   </Button>
