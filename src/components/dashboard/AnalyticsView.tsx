@@ -106,7 +106,8 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       let avgResponseTime = "0s";
       if (responseTimeEvents.length > 0) {
         const totalTime = responseTimeEvents.reduce((sum, event) => {
-          return sum + (event.event_data?.response_time_ms || 0);
+          const eventData = event.event_data as Record<string, unknown> | null;
+          return sum + (Number(eventData?.response_time_ms) || 0);
         }, 0);
         const avgMs = totalTime / responseTimeEvents.length;
         avgResponseTime = avgMs < 1000 ? `${avgMs.toFixed(0)}ms` : `${(avgMs / 1000).toFixed(1)}s`;

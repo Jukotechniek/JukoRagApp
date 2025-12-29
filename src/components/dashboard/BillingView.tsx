@@ -140,7 +140,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
   // Initialiseer geselecteerde organisatie wanneer beschikbaar
   useEffect(() => {
     if (availableOrganizations.length > 0 && !selectedOrganizationId) {
-      setSelectedOrganizationId(availableOrganizations[0].id);
+      setInternalSelectedOrganizationId(availableOrganizations[0].id);
     }
   }, [availableOrganizations, selectedOrganizationId]);
 

@@ -517,7 +517,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-org">Organisatie</Label>
-              <Input id="edit-org" defaultValue={currentAuthUser?.organization || "VDL Technics"} />
+              <Input id="edit-org" defaultValue={currentAuthUser?.organization_id || "VDL Technics"} />
             </div>
           </div>
           <DialogFooter>
