@@ -163,52 +163,32 @@ async function retrieveTool(
     });
     
     const vectorSearchStartTime = Date.now();
-    // Use the correct parameter names based on database types
-    // Database types show: p_organization_id, query_embedding (mixed!)
-    // Call RPC - try different parameter combinations to find what works
-    let semanticMatches: any = null;
-    let error: any = null;
-    
-    // Try with lower threshold first (0.30 might be too high)
-    const result1 = await supabase.rpc('match_document_sections', {
-      p_organization_id: organizationId,
+    // Function signature: match_document_sections(query_embedding vector, filter jsonb, p_organization_id uuid)
+    // Call with correct parameters
+    const { data: semanticMatches, error } = await supabase.rpc('match_document_sections', {
       query_embedding: queryEmbedding,
-      match_count: 10,
-      match_threshold: 0.20, // Lower threshold for more results
+      filter: {
+        match_count: 10,
+      },
+      p_organization_id: organizationId,
     } as any);
     
-    if (result1.error) {
-      // Try with p_ prefix for embedding
-      const result2 = await supabase.rpc('match_document_sections', {
-        p_organization_id: organizationId,
-        p_query_embedding: queryEmbedding,
-        p_match_count: 10,
-        p_threshold: 0.20,
-      } as any);
-      
-      if (result2.error) {
-        // Try without threshold (use default)
-        const result3 = await supabase.rpc('match_document_sections', {
-          p_organization_id: organizationId,
-          query_embedding: queryEmbedding,
-          match_count: 10,
-        } as any);
-        semanticMatches = result3.data;
-        error = result3.error;
-      } else {
-        semanticMatches = result2.data;
-        error = result2.error;
-      }
-    } else {
-      semanticMatches = result1.data;
-      error = result1.error;
-    }
-    
     const vectorSearchDuration = Date.now() - vectorSearchStartTime;
+    
+    // Debug logging
+    if (error) {
+      console.error('[Vector search RPC error]:', error);
+      console.error('  Query:', query.slice(0, 50));
+      console.error('  Org:', organizationId);
+      console.error('  Embedding length:', queryEmbedding.length);
+    } else {
+      console.log(`[Vector search]: RPC returned ${semanticMatches?.length || 0} matches for query: "${query.slice(0, 50)}"`);
+    }
 
     const semanticDocs: SimilarSection[] = [];
     if (!error && semanticMatches && Array.isArray(semanticMatches)) {
-      const docIds = [...new Set(semanticMatches.map((m: any) => m.document_id))].slice(0, 10);
+      // New function returns document_id directly, so we can fetch document names
+      const docIds = [...new Set(semanticMatches.map((m: any) => m.document_id).filter(Boolean))];
       const docMetadata: Map<string, any> = new Map();
 
       if (docIds.length > 0) {
@@ -224,10 +204,12 @@ async function retrieveTool(
 
       semanticDocs.push(...semanticMatches
         .map((m: any) => {
-          const docMeta = docMetadata.get(m.document_id) || {};
+          // Function now returns document_id directly
+          const docId = m.document_id;
+          const docMeta = docMetadata.get(docId) || {};
           return {
             id: String(m.id),
-            document_id: String(m.document_id),
+            document_id: String(docId || ''),
             content: safeString(m.content ?? '', 1200),
             metadata: m.metadata ?? {},
             similarity: Number(m.similarity ?? 0),
