@@ -350,40 +350,16 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
         # Generate embedding for the query
         query_embedding = embeddings.embed_query(query)
         
-        # Try to use RRF (Reciprocal Rank Fusion) RPC function if available
-        # This combines semantic search (pgvector) with full-text search (tsvector) at database level
-        # Falls back to regular semantic search if RRF function doesn't exist
-        try:
-            # Attempt RRF hybrid search (more efficient, combines semantic + keyword at DB level)
-            rrf_matches = supabase.rpc(
-                "match_document_sections_rrf",
-                {
-                    "p_organization_id": organization_id,
-                    "p_query_embedding": query_embedding,
-                    "p_query_text": query,  # For full-text search
-                    "p_match_count": 10,
-                    "p_semantic_threshold": 0.30,
-                    "p_rrf_k": 60  # RRF constant (typical value)
-                }
-            ).execute()
-            
-            if rrf_matches.data:
-                semantic_matches = rrf_matches
-                print("Using RRF hybrid search (semantic + full-text at DB level)")
-            else:
-                raise Exception("RRF function returned no data, falling back to semantic search")
-        except Exception as rrf_error:
-            # Fallback to regular semantic search if RRF is not available
-            print(f"RRF search not available ({rrf_error}), using semantic search only")
-            semantic_matches = supabase.rpc(
-                "match_document_sections",
-                {
-                    "p_organization_id": organization_id,
-                    "p_query_embedding": query_embedding,
-                    "p_match_count": 10,
-                    "p_threshold": 0.30
-                }
-            ).execute()
+        # Semantic search using RPC function
+        semantic_matches = supabase.rpc(
+            "match_document_sections",
+            {
+                "p_organization_id": organization_id,
+                "p_query_embedding": query_embedding,
+                "p_match_count": 10,
+                "p_threshold": 0.30
+            }
+        ).execute()
         
         semantic_docs = []
         if semantic_matches.data:
@@ -440,54 +416,78 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             )
             semantic_span.end()
         
-        # Keyword search span
-        invoice_pattern = re.search(r'[Ff]\d{4}-\d+', query)
+        # Keyword search span - full-text search for exact matches
+        keyword_span = None
+        if retrieve_span and langfuse_client and trace_context:
+            keyword_span = langfuse_client.start_span(
+                name="keyword_search",
+                trace_context=trace_context,
+                metadata={"query": query, "organization_id": organization_id}
+            )
+        
+        keyword_start = time.time()
         keyword_docs = []
         
-        if invoice_pattern:
-            keyword_span = None
-            if retrieve_span and langfuse_client and trace_context:
-                keyword_span = langfuse_client.start_span(
-                    name="keyword_search",
-                    trace_context=trace_context,
-                    metadata={"invoice_pattern": invoice_pattern.group(0), "organization_id": organization_id}
-                )
+        try:
+            # Filter by organization_id: first get document IDs for this organization
+            org_docs_result = supabase.table("documents").select("id").eq("organization_id", organization_id).execute()
+            org_doc_ids = [doc["id"] for doc in org_docs_result.data] if org_docs_result.data else []
             
-            keyword_start = time.time()
-            invoice_num = invoice_pattern.group(0)
-            try:
-                # Filter by organization_id: first get document IDs for this organization
-                org_docs_result = supabase.table("documents").select("id").eq("organization_id", organization_id).execute()
-                org_doc_ids = [doc["id"] for doc in org_docs_result.data] if org_docs_result.data else []
+            if org_doc_ids:
+                # Extract meaningful keywords from query (remove common words)
+                # Split query into words and search for each significant term
+                query_words = re.findall(r'\b\w{3,}\b', query.lower())  # Words with 3+ characters
+                # Remove common stopwords
+                stopwords = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'she', 'use', 'her', 'many', 'than', 'them', 'these', 'so', 'some', 'would', 'make', 'like', 'into', 'time', 'has', 'look', 'two', 'more', 'write', 'go', 'see', 'number', 'no', 'way', 'could', 'people', 'my', 'than', 'first', 'water', 'been', 'call', 'who', 'oil', 'sit', 'now', 'find', 'down', 'day', 'did', 'get', 'come', 'made', 'may', 'part'}
+                keywords = [w for w in query_words if w not in stopwords]
                 
-                if org_doc_ids:
-                    # Then search document_sections for those document IDs
-                    result = supabase.table("document_sections").select(
-                        "content, metadata"
-                    ).ilike("content", f"%{invoice_num}%").in_("document_id", org_doc_ids).limit(5).execute()
+                # If we have keywords, search for them
+                if keywords:
+                    # Get document metadata for keyword results
+                    doc_metadata_map = {}
                     
-                    if result.data:
-                        for row in result.data:
-                            keyword_docs.append(Document(
-                                page_content=row.get("content", ""),
-                                metadata=row.get("metadata", {}) if isinstance(row.get("metadata"), dict) else {}
-                            ))
-            except Exception as e:
-                if keyword_span:
-                    keyword_span.update(
-                        output={"error": str(e)},
-                        level="ERROR"
-                    )
-                    keyword_span.end()
-                pass
-            
-            keyword_duration = (time.time() - keyword_start) * 1000
+                    # Search for each keyword (limit to first 3 most important keywords)
+                    for keyword in keywords[:3]:
+                        result = supabase.table("document_sections").select(
+                            "content, metadata, document_id"
+                        ).ilike("content", f"%{keyword}%").in_("document_id", org_doc_ids).limit(5).execute()
+                        
+                        if result.data:
+                            # Get document names for these sections
+                            doc_ids = list(set([r.get("document_id") for r in result.data if r.get("document_id")]))
+                            if doc_ids:
+                                doc_result = supabase.table("documents").select("id, name").in_("id", doc_ids).eq("organization_id", organization_id).execute()
+                                if doc_result.data:
+                                    for doc in doc_result.data:
+                                        if doc["id"] not in doc_metadata_map:
+                                            doc_metadata_map[doc["id"]] = {"name": doc.get("name", "Unknown")}
+                            
+                            for row in result.data:
+                                doc_meta = doc_metadata_map.get(row.get("document_id"), {})
+                                keyword_docs.append(Document(
+                                    page_content=row.get("content", ""),
+                                    metadata={
+                                        "document_id": row.get("document_id"),
+                                        "source": doc_meta.get("name", "Unknown"),
+                                        **({} if not row.get("metadata") else row["metadata"] if isinstance(row.get("metadata"), dict) else {})
+                                    }
+                                ))
+        except Exception as e:
             if keyword_span:
                 keyword_span.update(
-                    output={"results_count": len(keyword_docs)},
-                    metadata={"duration_ms": keyword_duration}
+                    output={"error": str(e)},
+                    level="ERROR"
                 )
                 keyword_span.end()
+            pass
+        
+        keyword_duration = (time.time() - keyword_start) * 1000
+        if keyword_span:
+            keyword_span.update(
+                output={"results_count": len(keyword_docs)},
+                metadata={"duration_ms": keyword_duration}
+            )
+            keyword_span.end()
         
         # Combine and deduplicate
         combine_span = None
