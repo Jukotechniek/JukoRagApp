@@ -883,51 +883,65 @@ def extract_text_from_file(file_path: str, file_type: str, file_name: str) -> st
         raise Exception(f"Failed to extract text from {file_name}: {str(e)}")
 
 def _normalize_spaced_text(text: str) -> str:
-    """Normalize text by removing spaces between letters/digits and reducing whitespace.
-    
-    Handles cases where every character is separated by spaces (e.g., "W e s t f o r t").
-    Uses iterative approach to remove all spaces between alphanumeric characters.
-    
-    Examples:
-        "W e s t f o r t" -> "Westfort"
-        "2 R S P 0 2" -> "2RSP02"
-        "P a g e : 6 7" -> "Page:67"
-        "We st fo rt Vl ee sp ro du ct en" -> "Westfort Vleesproducten"
-    """
     if not text:
         return ""
-    
-    # Replace newlines with spaces
-    text = text.replace('\n', ' ').replace('\r', ' ')
-    
-    # Strategy: Remove all spaces between alphanumeric characters iteratively
-    # This handles cases like "W e s t f o r t" where every char is spaced
-    prev_text = ""
-    iterations = 0
-    max_iterations = 20  # Increased for very spaced text
-    
-    while text != prev_text and iterations < max_iterations:
-        prev_text = text
-        
-        # Remove spaces between any alphanumeric characters (letters or digits)
-        # This is more aggressive and handles all cases in one pass per iteration
-        # Pattern: alphanumeric, then one or more spaces, then alphanumeric
-        text = re.sub(r'([A-Za-z0-9])\s+([A-Za-z0-9])', r'\1\2', text)
-        
-        iterations += 1
-    
-    # Now handle special cases where we want to preserve spaces:
-    # 1. After punctuation (.,:;!?) - add space back if needed
-    # 2. Between words that should be separate (e.g., "2 RSP" -> "2 RSP")
-    # But we need to be careful: "2RSP02" should stay as one word
-    
-    # Add space after punctuation if followed by alphanumeric (if not already present)
-    text = re.sub(r'([.,:;!?])([A-Za-z0-9])', r'\1 \2', text)
-    
-    # Normalize all remaining whitespace (multiple spaces -> single space)
-    text = re.sub(r'\s+', ' ', text)
-    
-    return text.strip()
+
+    text = text.replace("\r", "")
+
+    def collapse_spaced_sequences(line: str) -> str:
+        pattern = r'(?<!\w)(?:[A-Za-z0-9]\s+){3,}[A-Za-z0-9](?!\w)'
+        return re.sub(pattern, lambda m: m.group(0).replace(" ", ""), line)
+
+    fixed_lines = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        # 1) collapse S t a r t / 8 8 4 1 Q 2 / 0 V D C
+        line = collapse_spaced_sequences(line)
+
+        # 2) join "A 1" -> "A1", "A 2" -> "A2"
+        line = re.sub(r"\bA\s+([12])\b", r"A\1", line)
+
+        # 3) join split numbers like "6 1 5" -> "615" (only if it’s a sequence of single digits)
+        #    examples: "6 0 1.9" should become "601.9" (we handle dot below too)
+        line = re.sub(r"\b(\d)\s+(\d)(?:\s+(\d))+\b",
+                      lambda m: m.group(0).replace(" ", ""), line)
+
+        # 4) join digit + unit: "1 7 A" -> "17A", "9 A" -> "9A"
+        line = re.sub(r"\b(\d)\s+(\d)\s*([A-Za-z])\b", r"\1\2\3", line)  # 1 7 A
+        line = re.sub(r"\b(\d)\s+([A-Za-z])\b", r"\1\2", line)          # 9 A
+
+        # 5) fix split "DO 8" -> "DO8", "NO NC" keep spacing (don’t join those)
+        line = re.sub(r"\bDO\s+(\d)\b", r"DO\1", line, flags=re.IGNORECASE)
+
+        # 6) normalize dots in addresses: "6 0 1.9" -> "601.9", "3 0 1.1" -> "301.1"
+        line = re.sub(r"\b(\d)\s+(\d)\s+(\d)\.(\d)\b", r"\1\2\3.\4", line)  # 6 0 1.9
+        line = re.sub(r"\b(\d)\s+(\d)\.(\d)\b", r"\1\2.\3", line)          # safety
+
+        # 7) fix PLC address formatting: Q264 .1 -> Q264.1, and stop Q264.12 becoming one token
+        line = re.sub(r'\b([QI]\d+)\s*\.\s*(\d)\b', r'\1.\2', line, flags=re.IGNORECASE)
+        line = re.sub(r'\b([QI]\d+)\.(\d)(\d+)\b', r'\1.\2 \3', line, flags=re.IGNORECASE)
+
+        # 8) fix dates like "2 5-0 6-2020" -> "25-06-2020"
+        line = re.sub(r"\b(\d)\s+(\d)-(\d)\s+(\d)-(\d{4})\b", r"\1\2-\3\4-\5", line)
+
+        # 9) remove spaces around punctuation a bit (keep slashes and dashes tight)
+        line = re.sub(r"\s*([.:,;/\-_()=+])\s*", r"\1", line)
+
+        # 10) optional: split CamelCase words (letters only)
+        line = re.sub(r'(?<=[a-z])(?=[A-Z][a-z])', ' ', line)
+
+        # 11) normalize whitespace
+        line = re.sub(r"[ \t]+", " ", line).strip()
+
+        fixed_lines.append(line)
+
+    return "\n".join(fixed_lines).strip()
+
+
+
 
 def extract_footer_info_from_pdf(pdf_path: str, page_num: int) -> dict:
     """Extract footer information from PDF page using area-based extraction with get_text("dict").
@@ -1144,7 +1158,9 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                 page = pdf[page_idx]
                 
                 # Extract text from page
-                page_text = page.get_text("text")
+                blocks = page.get_text("blocks")
+                page_text = "\n".join([b[4] for b in blocks if b[4].strip()])
+
                 
                 # Normalize spaced text (e.g., "W e s t f o r t" -> "Westfort")
                 normalized_text = _normalize_spaced_text(page_text)
