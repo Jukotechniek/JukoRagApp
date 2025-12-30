@@ -21,6 +21,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Export the Supabase URL for use in other components
+export { supabaseUrl };
+
 
 
 

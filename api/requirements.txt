@@ -10,4 +10,8 @@ supabase
 openai
 pydantic
 langfuse
+pypdf
+python-docx
+unstructured
+pandas
 

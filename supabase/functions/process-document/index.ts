@@ -153,9 +153,9 @@ serve(async (req) => {
       );
     }
 
-    const { documentId, content, organizationId } = requestBody;
+    const { documentId, content, organizationId, fileType } = requestBody;
 
-    if (!documentId || !content || !organizationId) {
+    if (!documentId || !organizationId) {
       return new Response(
         JSON.stringify({
           error: "Missing required fields",
@@ -169,8 +169,91 @@ serve(async (req) => {
       );
     }
 
+    // If content is not provided, fetch and extract from document
+    let textContent = content;
+    
+    if (!textContent) {
+      // Get document info
+      const { data: doc, error: docError } = await supabase
+        .from('documents')
+        .select('file_url, name, file_type')
+        .eq('id', documentId)
+        .single();
+
+      if (docError || !doc) {
+        return new Response(
+          JSON.stringify({ error: "Document not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Extract path from file_url
+      const urlMatch = doc.file_url?.match(/\/documents\/(.+)$/);
+      if (!urlMatch) {
+        return new Response(
+          JSON.stringify({ error: "Could not extract file path from URL" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const storagePath = decodeURIComponent(urlMatch[1]);
+      
+      // Download file from storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('documents')
+        .download(storagePath);
+
+      if (downloadError || !fileData) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Failed to download file",
+            details: downloadError?.message 
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // For PDF and DOCX, we need to extract text
+      // Note: Edge Functions don't have native PDF/DOCX parsing, so we'll need a library
+      // For now, return an error suggesting to use N8N webhook or convert to TXT
+      const isPDF = doc.file_type === 'application/pdf' || doc.name.toLowerCase().endsWith('.pdf');
+      const isDOCX = doc.file_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+                     doc.name.toLowerCase().endsWith('.docx');
+
+      if (isPDF || isDOCX) {
+        return new Response(
+          JSON.stringify({ 
+            error: "PDF and DOCX files require N8N webhook for processing",
+            hint: "Please configure VITE_N8N_WEBHOOK_URL in your environment variables, or convert the file to TXT format first."
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // For other file types, try to extract as text
+      try {
+        const fileText = new TextDecoder().decode(await fileData.arrayBuffer());
+        textContent = fileText;
+      } catch (extractError) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Failed to extract text from file",
+            details: extractError instanceof Error ? extractError.message : String(extractError)
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    if (!textContent || textContent.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No text content available to process" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // 1. Split document into chunks
-    const chunks = splitIntoChunks(content, {
+    const chunks = splitIntoChunks(textContent, {
       maxLength: 1000,
       overlap: 200,
     });

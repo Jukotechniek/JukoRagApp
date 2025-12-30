@@ -1,11 +1,6 @@
 // Document processing utilities for RAG
 // Splits documents into chunks and generates embeddings
 
-import { supabase } from './supabase';
-import { Database } from '@/types/database';
-
-type DocumentSectionInsert = Database['public']['Tables']['document_sections']['Insert'];
-
 interface Chunk {
   text: string;
   index: number;
@@ -83,69 +78,12 @@ export async function processDocumentForRAG(
   organizationId: string
 ): Promise<void> {
   try {
-    const n8nWebhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
+    // Use Python API for document processing (better PDF/DOCX support)
+    const pythonApiUrl = process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000';
     
-    if (!n8nWebhookUrl) {
-      // Fallback: Get document info and use Edge Function
-      console.warn('N8N webhook URL not configured, falling back to Edge Function');
-      
-      // Get document to extract content
-      const { data: doc, error: docError } = await supabase
-        .from('documents')
-        .select('file_url, name')
-        .eq('id', documentId)
-        .single();
-
-      if (docError || !doc) {
-        throw new Error('Document not found');
-      }
-
-      const docData = doc as { file_url: string | null; name: string };
-
-      // Extract path from file_url
-      const urlMatch = docData.file_url?.match(/\/documents\/(.+)$/);
-      if (!urlMatch) {
-        throw new Error('Could not extract file path from URL');
-      }
-
-      const storagePath = decodeURIComponent(urlMatch[1]);
-      
-      // Download file from storage
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('documents')
-        .download(storagePath);
-
-      if (downloadError || !fileData) {
-        throw new Error(`Failed to download file: ${downloadError?.message}`);
-      }
-
-      // Extract text
-      const textContent = await extractTextFromFile(new File([fileData], docData.name));
-
-      // Use Edge Function
-    const { data, error } = await supabase.functions.invoke('process-document', {
-      body: {
-        documentId,
-          content: textContent,
-        organizationId,
-      },
-    });
-
-    if (error) {
-        throw new Error(error.message || 'Edge Function error');
-      }
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Processing failed');
-      }
-      return;
-    }
-
-    // Call N8N webhook - only send documentId and organizationId
-    // N8N will fetch the file and extract text itself
-    console.log(`Calling N8N webhook for document processing: ${documentId}`);
+    console.log(`Calling Python API for document processing: ${documentId}`);
     
-    const response = await fetch(n8nWebhookUrl, {
+    const response = await fetch(`${pythonApiUrl}/api/process-document`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -153,7 +91,6 @@ export async function processDocumentForRAG(
       body: JSON.stringify({
         documentId,
         organizationId,
-        timestamp: new Date().toISOString(),
       }),
     });
 
@@ -162,14 +99,14 @@ export async function processDocumentForRAG(
       let errorData;
       try {
         errorData = JSON.parse(errorText);
-        } catch {
+      } catch {
         errorData = { error: errorText };
       }
       
       throw new Error(
+        errorData.detail || 
         errorData.error || 
-        errorData.message || 
-        `N8N webhook returned status ${response.status}`
+        `Python API returned status ${response.status}`
       );
     }
 
@@ -179,36 +116,31 @@ export async function processDocumentForRAG(
       throw new Error(data.error || data.message || 'Processing failed');
     }
 
-    // Optioneel: token usage van N8N webhook opslaan (embeddings)
-    // Verwacht dat N8N iets terugstuurt als:
-    // { success: true, chunksProcessed: 10, message: '...', totalTokens: 1234 }
-    if (data.totalTokens && organizationId) {
-      try {
-        await (supabase.from('token_usage') as any).insert({
-          organization_id: organizationId,
-          user_id: null,
-          model: 'text-embedding-3-small',
-          operation_type: 'document_processing',
-          prompt_tokens: data.totalTokens,
-          completion_tokens: 0,
-          total_tokens: data.totalTokens,
-          // Kosten via DB-functie zou netter zijn, maar hier slaan we alleen ruwe data + metadata op
-          metadata: {
-            document_id: documentId,
-            chunks_processed: data.chunksProcessed ?? null,
-            source: 'n8n-webhook',
-          },
-        });
-      } catch (tokenError) {
-        console.error('Failed to store embedding token usage from N8N:', tokenError);
-      }
-    }
-
-    console.log(`N8N processing completed successfully for document: ${documentId}`);
+    console.log(`Python processing completed successfully for document: ${documentId}`);
 
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);
-    throw new Error(`Failed to process document: ${error.message || error.toString()}`);
+    
+    // Provide more helpful error messages
+    const errorMessage = error.message || error.toString();
+    
+    if (errorMessage.includes('PDF') || errorMessage.includes('DOCX')) {
+      throw new Error(
+        `PDF/DOCX verwerking vereist een N8N webhook. ` +
+        `Configureer VITE_N8N_WEBHOOK_URL in je .env bestand, ` +
+        `of converteer het bestand eerst naar TXT formaat. ` +
+        `Originele error: ${errorMessage}`
+      );
+    }
+    
+    if (errorMessage.includes('N8N webhook')) {
+      throw new Error(
+        `N8N webhook error: ${errorMessage}. ` +
+        `Controleer of VITE_N8N_WEBHOOK_URL correct is geconfigureerd.`
+      );
+    }
+    
+    throw new Error(`Failed to process document: ${errorMessage}`);
   }
 }
 
@@ -258,7 +190,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
       let extractedText = '';
       
       // Process each sheet
-      workbook.SheetNames.forEach((sheetName, index) => {
+      workbook.SheetNames.forEach((sheetName) => {
         const worksheet = workbook.Sheets[sheetName];
         
         // Convert sheet to CSV format (preserves structure better than JSON)

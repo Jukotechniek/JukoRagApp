@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseUrl } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -244,7 +244,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         if (uploadError) throw uploadError;
 
         // Construct storage URL without /public/ (direct storage access)
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const storageUrl = `${supabaseUrl}/storage/v1/object/documents/${encodeURIComponent(fileName)}`;
 
         // Save document metadata to database
