@@ -145,7 +145,10 @@ Voor ELKE vraag volg je dit denkproces:
 **STAP 4: ANTWOORD CONSTRUCTIE**
 - Begin met een direct antwoord op de vraag
 - Gebruik gestructureerde formatting (bullet points, tabellen waar relevant)
-- Verwijs naar bronnen impliciet (niet met [1], [2] etc, maar natuurlijk)
+- **ALTIJD bronvermelding toevoegen**: Wanneer je informatie uit de database haalt, vermeld ALTIJD:
+  * De bestandsnaam (source)
+  * Het paginanummer uit de footer (page_number_footer)
+  * Format: "(Bron: [bestandsnaam], Pagina: [page_number_footer])" of vergelijkbaar
 - Sluit af met actie-items indien relevant
 
 ## 📋 OUTPUT REGELS (Strict Constraints)
@@ -155,6 +158,7 @@ Voor ELKE vraag volg je dit denkproces:
 - Gebruik de retrieve tool voor vragen over documenten
 - Wees specifiek en accuraat
 - Citeer exacte cijfers, datums, bedragen uit documenten
+- **ALTIJD bronvermelding toevoegen**: Bij ELKE informatie uit documenten, vermeld de bestandsnaam en paginanummer (page_number_footer)
 - Gebruik gestructureerde formatting voor complexe informatie
 - Beantwoord de vraag volledig voordat je extra context geeft
 - Wees professioneel maar vriendelijk
@@ -209,8 +213,8 @@ Bedrag:
 [Direct antwoord op de vraag]
 
 Technische details:
-- [specificatie 1]: [waarde]
-- [specificatie 2]: [waarde]
+- [specificatie 1]: [waarde] (Bron: [bestandsnaam], Pagina: [page_number_footer])
+- [specificatie 2]: [waarde] (Bron: [bestandsnaam], Pagina: [page_number_footer])
 
 [Extra context indien relevant]
 ```
@@ -273,6 +277,7 @@ Voor elk antwoord, check:
 - [ ] Is het antwoord compleet?
 - [ ] Zijn alle cijfers/datums accuraat?
 - [ ] Is de formatting duidelijk?
+- [ ] **Heb ik voor ELKE informatie uit documenten de bronvermelding toegevoegd (bestandsnaam + page_number_footer)?**
 - [ ] Verwijs ik naar de juiste bronnen?
 - [ ] Is het antwoord in het Nederlands?
 
@@ -519,8 +524,13 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             )
             combine_span.end()
         
+        # Format serialized output with clear source citations (filename and page from footer)
         serialized = "\n\n".join(
-            (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}")
+            (
+                f"Source: {doc.metadata.get('source', 'Unknown')}, "
+                f"Pagina: {doc.metadata.get('page', doc.metadata.get('page_number_footer', 'N/A'))}\n"
+                f"Content: {doc.page_content}"
+            )
             for doc in retrieved_docs
         )
         
@@ -1226,18 +1236,21 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                 footer_info = extract_footer_info_from_pdf(file_path, page_idx)
                 
                 # Build metadata
+                # actual_page = echte paginanummer (begint bij 1)
+                actual_page = page_idx + 1
+                
+                # page = page_number_footer (footer pagina nummer), fallback naar actual_page
+                page_footer = footer_info.get("page_number_footer") or actual_page
+                
                 metadata = {
                     "source": file_name,
-                    "page": page_idx,  # 0-based
-                    "page_number": page_idx + 1,  # 1-based
+                    "page": page_footer,  # Footer pagina nummer (primair)
+                    "actual_page": actual_page,  # Echte paginanummer (begint bij 1)
                     "is_sparse_text": is_sparse_text
                 }
                 
-                # Add footer info: page_number_footer (fallback to page_number if not found)
-                if footer_info.get("page_number_footer"):
-                    metadata["page_number_footer"] = footer_info["page_number_footer"]
-                else:
-                    metadata["page_number_footer"] = page_idx + 1  # Fallback to 1-based page number
+                # Keep page_number_footer for backwards compatibility
+                metadata["page_number_footer"] = page_footer
                 
                 # Add project description if found
                 if footer_info.get("project_description"):
@@ -1388,12 +1401,14 @@ async def process_document(
                     
                     # Add footer info to metadata if available (for PDFs)
                     # This enriches each chunk with page-specific footer information
+                    if "page" in doc_obj.metadata:
+                        chunk.metadata["page"] = doc_obj.metadata["page"]
+                    if "actual_page" in doc_obj.metadata:
+                        chunk.metadata["actual_page"] = doc_obj.metadata["actual_page"]
                     if "page_number_footer" in doc_obj.metadata:
                         chunk.metadata["page_number_footer"] = doc_obj.metadata["page_number_footer"]
                     if "project_description" in doc_obj.metadata:
                         chunk.metadata["project_description"] = doc_obj.metadata["project_description"]
-                    if "page_number" in doc_obj.metadata:
-                        chunk.metadata["page_number"] = doc_obj.metadata["page_number"]
                 
                 chunks.extend(page_chunks)
             
