@@ -2,6 +2,8 @@
 -- This combines semantic search (pgvector) with full-text search (tsvector) at database level
 -- Much more efficient than doing separate queries and merging in Python
 
+DROP FUNCTION IF EXISTS match_document_sections_rrf(UUID, vector, TEXT, INT, FLOAT, INT);
+
 CREATE OR REPLACE FUNCTION match_document_sections_rrf(
     p_organization_id UUID,
     p_query_embedding vector(1536),
@@ -20,81 +22,69 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    semantic_results RECORD;
-    keyword_results RECORD;
-    combined_results RECORD;
 BEGIN
-    -- Semantic search using pgvector (cosine similarity)
-    -- Get semantic matches with their ranks
+    RETURN QUERY
     WITH semantic_ranked AS (
         SELECT 
-            ds.id,
-            ds.document_id,
-            ds.content,
-            ds.metadata,
-            1 - (ds.embedding <=> p_query_embedding) AS similarity,
-            ROW_NUMBER() OVER (ORDER BY ds.embedding <=> p_query_embedding) AS rank
+            ds.id AS section_id,
+            ds.document_id AS doc_id,
+            ds.content AS section_content,
+            ds.metadata AS section_metadata,
+            (1 - (ds.embedding <=> p_query_embedding))::FLOAT AS sem_similarity,
+            ROW_NUMBER() OVER (ORDER BY ds.embedding <=> p_query_embedding) AS sem_rank
         FROM document_sections ds
         INNER JOIN documents d ON ds.document_id = d.id
         WHERE d.organization_id = p_organization_id
             AND 1 - (ds.embedding <=> p_query_embedding) >= p_semantic_threshold
         ORDER BY ds.embedding <=> p_query_embedding
-        LIMIT p_match_count * 2  -- Get more results for better fusion
+        LIMIT p_match_count * 2
     ),
-    -- Full-text search using tsvector (PostgreSQL full-text search)
     keyword_ranked AS (
         SELECT 
-            ds.id,
-            ds.document_id,
-            ds.content,
-            ds.metadata,
+            ds.id AS section_id,
+            ds.document_id AS doc_id,
+            ds.content AS section_content,
+            ds.metadata AS section_metadata,
             ts_rank_cd(
                 to_tsvector('english', ds.content),
                 plainto_tsquery('english', p_query_text)
-            ) AS similarity,
+            )::FLOAT AS kw_similarity,
             ROW_NUMBER() OVER (
                 ORDER BY ts_rank_cd(
                     to_tsvector('english', ds.content),
                     plainto_tsquery('english', p_query_text)
                 ) DESC
-            ) AS rank
+            ) AS kw_rank
         FROM document_sections ds
         INNER JOIN documents d ON ds.document_id = d.id
         WHERE d.organization_id = p_organization_id
             AND to_tsvector('english', ds.content) @@ plainto_tsquery('english', p_query_text)
-        ORDER BY similarity DESC
-        LIMIT p_match_count * 2  -- Get more results for better fusion
+        ORDER BY kw_similarity DESC
+        LIMIT p_match_count * 2
     ),
-    -- Combine results using Reciprocal Rank Fusion (RRF)
-    -- RRF score = sum(1 / (k + rank)) for each result set
     rrf_combined AS (
         SELECT 
-            COALESCE(s.id, k.id) AS id,
-            COALESCE(s.document_id, k.document_id) AS document_id,
-            COALESCE(s.content, k.content) AS content,
-            COALESCE(s.metadata, k.metadata) AS metadata,
-            COALESCE(s.similarity, 0.0) AS semantic_similarity,
-            COALESCE(k.similarity, 0.0) AS keyword_similarity,
-            -- RRF formula: 1 / (k + rank_semantic) + 1 / (k + rank_keyword)
-            (COALESCE(1.0 / (p_rrf_k + s.rank), 0.0) + 
-             COALESCE(1.0 / (p_rrf_k + k.rank), 0.0)) AS rrf_score,
-            s.rank AS semantic_rank,
-            k.rank AS keyword_rank
+            (CASE WHEN s.section_id IS NOT NULL THEN s.section_id ELSE k.section_id END)::UUID AS result_id,
+            (CASE WHEN s.doc_id IS NOT NULL THEN s.doc_id ELSE k.doc_id END)::UUID AS result_document_id,
+            COALESCE(s.section_content, k.section_content)::TEXT AS result_content,
+            COALESCE(s.section_metadata, k.section_metadata)::JSONB AS result_metadata,
+            COALESCE(s.sem_similarity, 0.0)::FLOAT AS semantic_sim,
+            COALESCE(k.kw_similarity, 0.0)::FLOAT AS keyword_sim,
+            (COALESCE(1.0 / NULLIF(p_rrf_k::FLOAT + s.sem_rank::FLOAT, 0), 0.0) + 
+             COALESCE(1.0 / NULLIF(p_rrf_k::FLOAT + k.kw_rank::FLOAT, 0), 0.0))::FLOAT AS rrf_score
         FROM semantic_ranked s
-        FULL OUTER JOIN keyword_ranked k ON s.id = k.id
+        FULL OUTER JOIN keyword_ranked k ON s.section_id = k.section_id
     )
     SELECT 
-        id,
-        document_id,
-        content,
-        metadata,
-        -- Use weighted combination of semantic and keyword similarity
-        (semantic_similarity * 0.7 + keyword_similarity * 0.3) AS similarity,
-        rrf_score
+        rrf_combined.result_id,
+        rrf_combined.result_document_id,
+        rrf_combined.result_content,
+        rrf_combined.result_metadata,
+        (rrf_combined.semantic_sim * 0.7 + rrf_combined.keyword_sim * 0.3)::FLOAT AS similarity,
+        rrf_combined.rrf_score
     FROM rrf_combined
-    WHERE rrf_score > 0  -- Only return results that appear in at least one result set
-    ORDER BY rrf_score DESC, similarity DESC
+    WHERE rrf_combined.rrf_score > 0
+    ORDER BY rrf_combined.rrf_score DESC, (rrf_combined.semantic_sim * 0.7 + rrf_combined.keyword_sim * 0.3) DESC
     LIMIT p_match_count;
 END;
 $$;
@@ -108,4 +98,3 @@ USING gin(to_tsvector('english', content));
 -- Add comment explaining the function
 COMMENT ON FUNCTION match_document_sections_rrf IS 
 'Hybrid search using Reciprocal Rank Fusion (RRF) to combine semantic similarity (pgvector) with full-text search (tsvector). More efficient than separate queries merged in application code.';
-
