@@ -310,7 +310,7 @@ def _retrieve_internal(query: str, trace=None, trace_context=None):
             semantic_span = langfuse_client.start_span(
                 name="semantic_search",
                 trace_context=trace_context,
-                metadata={"query": query, "k": 10}
+                metadata={"query": query, "k": 4}
             )
         
         # Track embedding generation
@@ -327,7 +327,7 @@ def _retrieve_internal(query: str, trace=None, trace_context=None):
         
         embedding_start = time.time()
         semantic_start = time.time()
-        semantic_docs = vector_store.similarity_search(query, k=10)
+        semantic_docs = vector_store.similarity_search(query, k=5)
         semantic_duration = (time.time() - semantic_start) * 1000
         embedding_duration = (time.time() - embedding_start) * 1000
         
@@ -367,7 +367,7 @@ def _retrieve_internal(query: str, trace=None, trace_context=None):
             keyword_start = time.time()
             invoice_num = invoice_pattern.group(0)
             try:
-                result = supabase.table("document_sections").select("content, metadata").ilike("content", f"%{invoice_num}%").limit(10).execute()
+                result = supabase.table("document_sections").select("content, metadata").ilike("content", f"%{invoice_num}%").limit(5).execute()
                 if result.data:
                     for row in result.data:
                         keyword_docs.append(Document(
