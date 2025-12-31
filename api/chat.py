@@ -47,8 +47,9 @@ except ImportError:
 from supabase.client import Client, create_client
 
 # import FastAPI for API endpoint
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional, List
 import uvicorn
@@ -659,19 +660,98 @@ agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 # FastAPI app
 app = FastAPI(title="DocuBot Assistant API")
 
-# CORS middleware - restrict to allowed origins
-allowed_origins = os.environ.get("ALLOWED_ORIGINS", "").split(",") if os.environ.get("ALLOWED_ORIGINS") else []
-# If no origins specified, default to empty list (strict) or allow all for development
-# In production, set ALLOWED_ORIGINS environment variable
-cors_origins = allowed_origins if allowed_origins else ["*"]  # Fallback to * for development
+# Add logging middleware to debug CORS issues
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all requests for debugging"""
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    try:
+        response = await call_next(request)
+        logger.info(f"Response status: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        raise
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=["authorization", "content-type"],
-)
+# CORS middleware - restrict to allowed origins
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()] if allowed_origins_env else []
+
+# For development, allow common localhost origins
+# Note: Cannot use ["*"] with allow_credentials=True
+if allowed_origins:
+    cors_origins = allowed_origins
+    cors_credentials = True
+else:
+    # For development: explicitly allow localhost origins
+    cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
+    cors_credentials = False
+
+# Temporarily disable CORS middleware and handle CORS manually in route handlers
+# This ensures OPTIONS requests are handled correctly
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=cors_origins,
+#     allow_credentials=cors_credentials,
+#     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+#     allow_headers=[
+#         "accept",
+#         "accept-language",
+#         "content-language",
+#         "content-type",
+#         "authorization",
+#         "Authorization",
+#         "Content-Type",
+#         "Access-Control-Request-Method",
+#         "Access-Control-Request-Headers",
+#     ],
+#     expose_headers=["*"],
+#     max_age=3600,
+# )
+
+# Add CORS headers manually via middleware
+@app.middleware("http")
+async def add_cors_header(request: Request, call_next):
+    """Manually add CORS headers to all responses"""
+    response = await call_next(request)
+    
+    # Get origin from request
+    origin = request.headers.get("origin")
+    
+    # Allow localhost origins for development
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+    
+    if origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "authorization, content-type, Authorization, Content-Type, Accept"
+        response.headers["Access-Control-Allow-Credentials"] = "false"
+        response.headers["Access-Control-Max-Age"] = "3600"
+    elif not origin:
+        # For requests without origin (like direct API calls), allow all
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "authorization, content-type, Authorization, Content-Type, Accept"
+    
+    return response
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -711,9 +791,13 @@ async def verify_auth_token(authorization: Optional[str], organization_id: str) 
     
     # Verify token with Supabase
     # Create a client with anon key to verify user token
+    # Anon key is safe to use for token verification (it's meant to be public)
     supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY")
     if not supabase_anon_key:
-        raise HTTPException(status_code=500, detail="Server configuration error")
+        raise HTTPException(status_code=500, detail="Server configuration error: Missing SUPABASE_ANON_KEY")
+    
+    if not supabase_url:
+        raise HTTPException(status_code=500, detail="Server configuration error: Missing SUPABASE_URL")
     
     from supabase.client import create_client as create_supabase_client
     supabase_auth = create_supabase_client(supabase_url, supabase_anon_key)
@@ -1483,6 +1567,51 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
     
     except Exception as e:
         raise Exception(f"Failed to extract documents from {file_name}: {str(e)}")
+
+
+
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint to test CORS"""
+    return {"status": "ok", "message": "API is running"}
+
+
+@app.api_route("/api/process-document", methods=["OPTIONS"])
+async def process_document_options(request: Request):
+    """Handle CORS preflight requests explicitly - this should work even if CORS middleware fails"""
+    # Get the origin from the request
+    origin = request.headers.get("origin", "http://localhost:3000")
+    
+    # Allow common localhost origins for development
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+    
+    # If origin is in allowed list, use it; otherwise use the requested origin
+    if origin in allowed_origins:
+        allow_origin = origin
+    elif not origin or origin == "null":
+        allow_origin = "http://localhost:3000"  # Default for development
+    else:
+        allow_origin = origin  # Allow the requested origin
+    
+    # Return response with CORS headers
+    response = Response(
+        status_code=200,
+        content="",
+        headers={
+            "Access-Control-Allow-Origin": allow_origin,
+            "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+            "Access-Control-Allow-Headers": "authorization, content-type, Authorization, Content-Type, Accept",
+            "Access-Control-Allow-Credentials": "false",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+    return response
 
 
 @app.post("/api/process-document", response_model=ProcessDocumentResponse)

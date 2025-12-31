@@ -80,6 +80,13 @@ export async function processDocumentForRAG(
   organizationId: string
 ): Promise<void> {
   try {
+    // Get Supabase session for authorization
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error("Missing authorization header");
+    }
+    
     // Use Python API for document processing (better PDF/DOCX support)
     const pythonApiUrl = process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000';
     
@@ -89,6 +96,7 @@ export async function processDocumentForRAG(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         documentId,

@@ -72,3 +72,6 @@
 - User roles worden geverifieerd via database
 - Service role key wordt alleen gebruikt na autorisatie checks
 
+
+
+
