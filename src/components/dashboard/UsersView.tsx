@@ -168,7 +168,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
   const technicians = filteredUsers.filter((u) => u.role === "technician");
 
   const handleAddUser = async () => {
-    if (!newUser.name || !newUser.email || !effectiveOrgId) {
+    if (!newUser.name || !newUser.email || !effectiveOrgId || !currentAuthUser) {
       toast({
         title: "Velden verplicht",
         description: "Vul alle verplichte velden in.",
@@ -178,53 +178,31 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
     }
 
     try {
-      // Note: In production, you would use Supabase Admin API (server-side)
-      // or send an invite email. For now, we'll create a placeholder user record
-      // that can be activated when they sign up with the same email.
-      
-      // Generate a temporary UUID for the user (they'll be created in auth when they sign up)
-      const tempId = crypto.randomUUID();
-
-      // Create user record (will be linked to auth.users when they sign up)
-      const { error: userError } = await supabase.from("users").insert({
-        id: tempId,
-        email: newUser.email,
-        name: newUser.name,
-        role: newUser.role,
+      // Use API route to create user with Admin API
+      const response = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: newUser.email,
+          name: newUser.name,
+          role: newUser.role,
+          organizationId: effectiveOrgId,
+          currentUserId: currentAuthUser.id,
+          currentUserRole: currentRole,
+        }),
       });
 
-      if (userError) {
-        // If user already exists, try to find them
-        const { data: existingUser } = await supabase
-          .from("users")
-          .select("id")
-          .eq("email", newUser.email)
-          .single();
+      const data = await response.json();
 
-        if (existingUser) {
-          // Link existing user to organization
-          const { error: linkError } = await supabase.from("user_organizations").insert({
-            user_id: existingUser.id,
-            organization_id: effectiveOrgId,
-          });
-
-          if (linkError) throw linkError;
-        } else {
-          throw userError;
-        }
-      } else {
-        // Link new user to organization
-        const { error: linkError } = await supabase.from("user_organizations").insert({
-          user_id: tempId,
-          organization_id: effectiveOrgId,
-        });
-
-        if (linkError) throw linkError;
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create user');
       }
 
       toast({
         title: "Gebruiker toegevoegd",
-        description: `${newUser.name} is toegevoegd aan het team. Ze kunnen nu inloggen met hun email.`,
+        description: `${newUser.name} is toegevoegd aan het team. Ze ontvangen een email om hun wachtwoord in te stellen.`,
       });
 
       setAddUserDialogOpen(false);
@@ -246,13 +224,30 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
   };
 
   const confirmDelete = async () => {
-    if (!userToDelete) return;
+    if (!userToDelete || !effectiveOrgId || !currentAuthUser) return;
 
     try {
-      // Delete user (this will cascade delete from user_organizations)
-      const { error } = await supabase.from("users").delete().eq("id", userToDelete.id);
+      // Use API route to delete user
+      // The API will automatically delete completely if user is only in this organization
+      const response = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userToDelete.id,
+          organizationId: effectiveOrgId,
+          currentUserId: currentAuthUser.id,
+          currentUserRole: currentRole,
+          deleteFromAuth: true, // Always try to delete completely if user is only in this org
+        }),
+      });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete user');
+      }
 
       toast({
         title: "Gebruiker verwijderd",
@@ -314,9 +309,20 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
               : `${users.length} gebruikers totaal`}
           </p>
         </div>
-        <Button variant="hero" onClick={() => setAddUserDialogOpen(true)}>
+        <Button 
+          variant="hero" 
+          onClick={() => {
+            // Reset form and set default role
+            setNewUser({ 
+              name: "", 
+              email: "", 
+              role: "technician" 
+            });
+            setAddUserDialogOpen(true);
+          }}
+        >
           <Plus className="w-4 h-4 mr-2" />
-          {currentRole === "manager" ? "Monteur Toevoegen" : "Gebruiker Toevoegen"}
+          {currentRole === "manager" ? "Gebruiker Toevoegen" : "Gebruiker Toevoegen"}
         </Button>
       </div>
 
@@ -448,9 +454,9 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
       <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{currentRole === "manager" ? "Monteur Toevoegen" : "Gebruiker Toevoegen"}</DialogTitle>
+            <DialogTitle>Gebruiker Toevoegen</DialogTitle>
             <DialogDescription>
-              Voeg een nieuwe {currentRole === "manager" ? "monteur" : "gebruiker"} toe aan het team.
+              Voeg een nieuwe gebruiker toe aan het team. Ze ontvangen een email om hun wachtwoord in te stellen.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -473,7 +479,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
                 placeholder="jan@voorbeeld.nl"
               />
             </div>
-            {currentRole === "admin" && (
+            {(currentRole === "admin" || currentRole === "manager") && (
               <div className="space-y-2">
                 <Label htmlFor="role">Rol</Label>
                 <Select value={newUser.role} onValueChange={(value: "manager" | "technician") => setNewUser({ ...newUser, role: value })}>
