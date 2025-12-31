@@ -14,5 +14,6 @@ pypdf
 python-docx
 unstructured
 pandas
+openpyxl
 pymupdf
 

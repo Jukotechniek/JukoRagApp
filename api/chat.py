@@ -1300,6 +1300,48 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                 doc.metadata["source"] = file_name
             return documents
         
+        elif file_type in ['application/vnd.ms-excel', 
+                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or \
+             file_name.lower().endswith(('.xls', '.xlsx')):
+            # For Excel files, combine rows into larger documents to reduce chunk count
+            # CSVLoader treats each row as a document, which creates too many chunks
+            # Instead, combine multiple rows into single documents
+            try:
+                import pandas as pd
+                # Read Excel file
+                df = pd.read_excel(file_path, engine='openpyxl' if file_name.lower().endswith('.xlsx') else None)
+                
+                # Combine rows into larger chunks (e.g., 50 rows per document)
+                # This reduces the number of documents significantly
+                rows_per_document = 50
+                documents = []
+                
+                for i in range(0, len(df), rows_per_document):
+                    chunk_df = df.iloc[i:i + rows_per_document]
+                    # Convert to string representation
+                    # Use to_string() for better formatting, or to_csv() for CSV-like format
+                    content = chunk_df.to_string(index=False)
+                    
+                    doc = Document(
+                        page_content=content,
+                        metadata={
+                            "source": file_name,
+                            "row_start": i + 1,  # 1-indexed
+                            "row_end": min(i + rows_per_document, len(df))
+                        }
+                    )
+                    documents.append(doc)
+                
+                return documents
+            except ImportError:
+                # Fallback to CSVLoader if pandas/openpyxl not available
+                print("Warning: pandas/openpyxl not available, falling back to CSVLoader")
+                loader = CSVLoader(file_path, encoding='utf-8')
+                documents = loader.load()
+                for doc in documents:
+                    doc.metadata["source"] = file_name
+                return documents
+        
         else:
             # Try to read as text
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -1379,15 +1421,17 @@ async def process_document(
             
             # Page-based chunking: split each page separately to preserve page context
             # This is critical for technical schemas where mixing pages breaks connections
-            # For Excel/CSV files, use smaller chunks to avoid token limit issues
-            # Excel rows can be very large with many columns
-            is_excel_or_csv = file_type in ['text/csv', 'application/vnd.ms-excel', 
-                                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or \
-                            file_name.lower().endswith(('.csv', '.xls', '.xlsx'))
+            # For Excel files, we now combine rows into larger documents (50 rows each)
+            # so we can use normal chunk sizes. For CSV, still use smaller chunks.
+            is_excel = file_type in ['application/vnd.ms-excel', 
+                                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or \
+                      file_name.lower().endswith(('.xls', '.xlsx'))
+            is_csv = file_type == 'text/csv' or file_name.lower().endswith('.csv')
             
-            # Use smaller chunk size for Excel/CSV to prevent large chunks
-            chunk_size = 800 if is_excel_or_csv else 1500
-            chunk_overlap = 100 if is_excel_or_csv else 200
+            # For Excel: use normal chunk size since we combine rows into larger documents
+            # For CSV: use smaller chunks since CSVLoader still creates per-row documents
+            chunk_size = 800 if is_csv else 1500
+            chunk_overlap = 100 if is_csv else 200
             
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
@@ -1403,10 +1447,10 @@ async def process_document(
             # This preserves the context of each page, which is critical for technical schemas
             chunks = []
             for doc_obj in langchain_docs:
-                # For Excel/CSV: ensure content is split even if single row is large
-                # Check if content is too large and force splitting
+                # For CSV: ensure content is split even if single row is large
+                # Excel files are now combined into larger documents, so normal splitting is fine
                 content_length = len(doc_obj.page_content)
-                if is_excel_or_csv and content_length > chunk_size * 2:
+                if is_csv and content_length > chunk_size * 2:
                     # Content is very large, split it multiple times if needed
                     # First split normally
                     page_chunks = text_splitter.split_documents([doc_obj])
