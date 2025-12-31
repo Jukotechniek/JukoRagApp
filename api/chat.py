@@ -878,6 +878,21 @@ async def chat_endpoint(
         
         total_duration = (time.time() - start_time) * 1000
         
+        # Log response time to analytics
+        try:
+            supabase.table("analytics").insert({
+                "organization_id": request.organizationId,
+                "event_type": "response_time",
+                "event_data": {
+                    "response_time_ms": total_duration,
+                    "question_length": len(request.question),
+                    "response_length": len(ai_message),
+                    "request_id": request_id
+                }
+            }).execute()
+        except Exception as analytics_error:
+            print(f"Warning: Failed to log response time to analytics: {analytics_error}")
+        
         # End trace
         if trace:
             trace.update(
@@ -906,6 +921,21 @@ async def chat_endpoint(
         total_duration = (time.time() - start_time) * 1000
         error_msg = str(e)
         print(f"Error in chat endpoint: {e}")
+        
+        # Log response time to analytics even on error
+        try:
+            supabase.table("analytics").insert({
+                "organization_id": request.organizationId,
+                "event_type": "response_time",
+                "event_data": {
+                    "response_time_ms": total_duration,
+                    "question_length": len(request.question),
+                    "error": error_msg,
+                    "request_id": request_id
+                }
+            }).execute()
+        except Exception as analytics_error:
+            print(f"Warning: Failed to log response time to analytics: {analytics_error}")
         
         if trace:
             trace.update(

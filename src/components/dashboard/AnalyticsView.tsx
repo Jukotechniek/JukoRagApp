@@ -8,10 +8,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { subWeeks, subMonths, format } from "date-fns";
+import { subWeeks, subMonths, format, startOfWeek, startOfMonth } from "date-fns";
 import { nl } from "date-fns/locale";
 
 interface AnalyticsViewProps {
@@ -130,17 +136,30 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
   };
 
   const generateTimeSeriesData = (data: any[], startDate: Date) => {
+    const now = new Date();
     const questionsByDate: Record<string, number> = {};
 
-    data
-      .filter((a) => a.event_type === "question_asked")
-      .forEach((item) => {
-        const date = format(new Date(item.created_at), timeRange === "year" ? "MMM" : timeRange === "month" ? "w" : "EEE", { locale: nl });
-        questionsByDate[date] = (questionsByDate[date] || 0) + 1;
+    if (timeRange === "week") {
+      // Initialize all days of the week with 0
+      const days = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+      days.forEach((day) => {
+        questionsByDate[day] = 0;
       });
 
-    if (timeRange === "week") {
-      const days = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+      // Count questions by day of week
+      data
+        .filter((a) => a.event_type === "question_asked")
+        .forEach((item) => {
+          const itemDate = new Date(item.created_at);
+          // Only count if within the time range
+          if (itemDate >= startDate && itemDate <= now) {
+            const dayKey = format(itemDate, "EEE", { locale: nl });
+            if (questionsByDate.hasOwnProperty(dayKey)) {
+              questionsByDate[dayKey] = (questionsByDate[dayKey] || 0) + 1;
+            }
+          }
+        });
+
       setWeeklyData(
         days.map((day) => ({
           day,
@@ -148,16 +167,54 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
         }))
       );
     } else if (timeRange === "month") {
-      setWeeklyData([
-        { day: "Week 1", questions: questionsByDate["1"] || 0 },
-        { day: "Week 2", questions: questionsByDate["2"] || 0 },
-        { day: "Week 3", questions: questionsByDate["3"] || 0 },
-        { day: "Week 4", questions: questionsByDate["4"] || 0 },
-      ]);
-    } else {
-      const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
+      // Initialize weeks (typically 4-5 weeks in a month)
+      for (let i = 1; i <= 5; i++) {
+        questionsByDate[`Week ${i}`] = 0;
+      }
+
+      // Count questions by week of month
+      data
+        .filter((a) => a.event_type === "question_asked")
+        .forEach((item) => {
+          const itemDate = new Date(item.created_at);
+          if (itemDate >= startDate && itemDate <= now) {
+            const monthStart = startOfMonth(itemDate);
+            const weekStart = startOfWeek(itemDate, { weekStartsOn: 1 });
+            const daysDiff = Math.floor((weekStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+            const weekIndex = Math.floor(daysDiff / 7) + 1;
+            const weekKey = `Week ${Math.min(weekIndex, 5)}`;
+            questionsByDate[weekKey] = (questionsByDate[weekKey] || 0) + 1;
+          }
+        });
+
       setWeeklyData(
-        months.slice(0, 6).map((month) => ({
+        Array.from({ length: 5 }, (_, i) => ({
+          day: `Week ${i + 1}`,
+          questions: questionsByDate[`Week ${i + 1}`] || 0,
+        }))
+      );
+    } else {
+      // Year view - show last 12 months
+      const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
+      months.forEach((month) => {
+        questionsByDate[month] = 0;
+      });
+
+      // Count questions by month
+      data
+        .filter((a) => a.event_type === "question_asked")
+        .forEach((item) => {
+          const itemDate = new Date(item.created_at);
+          if (itemDate >= startDate && itemDate <= now) {
+            const monthKey = format(itemDate, "MMM", { locale: nl });
+            if (questionsByDate.hasOwnProperty(monthKey)) {
+              questionsByDate[monthKey] = (questionsByDate[monthKey] || 0) + 1;
+            }
+          }
+        });
+
+      setWeeklyData(
+        months.map((month) => ({
           day: month,
           questions: questionsByDate[month] || 0,
         }))
@@ -288,22 +345,32 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
             </h2>
           </div>
 
-          <div className="flex items-end justify-between gap-2 h-48">
-            {weeklyData.map((data) => (
-              <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full flex flex-col justify-end h-40">
-                  <div
-                    className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80"
-                    style={{
-                      height: `${(data.questions / maxQuestions) * 100}%`,
-                      minHeight: "8px",
-                    }}
-                  />
+          <TooltipProvider>
+            <div className="flex items-end justify-between gap-2 h-48">
+              {weeklyData.map((data) => (
+                <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-full flex flex-col justify-end h-40">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div
+                          className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80 cursor-pointer"
+                          style={{
+                            height: `${(data.questions / maxQuestions) * 100}%`,
+                            minHeight: "8px",
+                          }}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="font-medium">{data.day}</p>
+                        <p className="text-sm">{data.questions} {data.questions === 1 ? 'vraag' : 'vragen'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{data.day}</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{data.day}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </TooltipProvider>
         </div>
 
         {/* Top Questions */}
