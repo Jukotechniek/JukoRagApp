@@ -3,13 +3,14 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_REMOVE_DELAY = 5000; // Default 5 seconds
 
 type ToasterToast = ToastProps & {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
+  duration?: number;
 };
 
 const actionTypes = {
@@ -52,10 +53,12 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
-const addToRemoveQueue = (toastId: string) => {
+const addToRemoveQueue = (toastId: string, duration?: number) => {
   if (toastTimeouts.has(toastId)) {
     return;
   }
+
+  const delay = duration !== undefined ? duration : TOAST_REMOVE_DELAY;
 
   const timeout = setTimeout(() => {
     toastTimeouts.delete(toastId);
@@ -63,7 +66,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: "REMOVE_TOAST",
       toastId: toastId,
     });
-  }, TOAST_REMOVE_DELAY);
+  }, delay);
 
   toastTimeouts.set(toastId, timeout);
 };
@@ -88,10 +91,11 @@ export const reducer = (state: State, action: Action): State => {
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
       if (toastId) {
-        addToRemoveQueue(toastId);
+        const toast = state.toasts.find((t) => t.id === toastId);
+        addToRemoveQueue(toastId, toast?.duration);
       } else {
         state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id);
+          addToRemoveQueue(toast.id, toast.duration);
         });
       }
 
@@ -134,7 +138,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">;
 
-function toast({ ...props }: Toast) {
+function toast({ duration, ...props }: Toast) {
   const id = genId();
 
   const update = (props: ToasterToast) =>
@@ -144,17 +148,48 @@ function toast({ ...props }: Toast) {
     });
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id });
 
+  const toastData: ToasterToast = {
+    ...props,
+    id,
+    duration,
+    open: true,
+    onOpenChange: (open) => {
+      if (!open) dismiss();
+    },
+  };
+
   dispatch({
     type: "ADD_TOAST",
-    toast: {
-      ...props,
-      id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss();
-      },
-    },
+    toast: toastData,
   });
+
+  // Auto-dismiss after duration if specified
+  if (duration !== undefined && duration > 0) {
+    // Clear any existing timeout for this toast
+    if (toastTimeouts.has(id)) {
+      clearTimeout(toastTimeouts.get(id)!);
+    }
+    
+    const timeout = setTimeout(() => {
+      // Set open to false first
+      dispatch({
+        type: "UPDATE_TOAST",
+        toast: { id, open: false },
+      });
+      
+      // Then remove it after a short delay for animation
+      setTimeout(() => {
+        dispatch({
+          type: "REMOVE_TOAST",
+          toastId: id,
+        });
+        toastTimeouts.delete(id);
+      }, 100);
+    }, duration);
+    
+    // Store timeout so we can clear it if needed
+    toastTimeouts.set(id, timeout);
+  }
 
   return {
     id: id,

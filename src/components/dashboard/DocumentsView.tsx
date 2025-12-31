@@ -34,6 +34,7 @@ import { nl } from "date-fns/locale";
 import { processDocumentForRAG, extractTextFromFile } from "@/lib/document-processing";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import type { Database } from "@/types/database";
 
 type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
@@ -67,6 +68,48 @@ interface DocumentsViewProps {
   selectedOrganizationId?: string | null;
 }
 
+// Circular Progress Component
+const CircularProgress = ({ value, size = 40, strokeWidth = 4 }: { value: number; size?: number; strokeWidth?: number }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (value / 100) * circumference;
+
+  return (
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg
+        width={size}
+        height={size}
+        className="transform -rotate-90"
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          className="text-secondary"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="text-primary transition-all duration-300"
+        />
+      </svg>
+      <span className="absolute text-xs font-medium text-foreground">
+        {Math.round(value)}%
+      </span>
+    </div>
+  );
+};
+
 const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +120,11 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  
+  // Progress tracking - track by filename for uploads, by doc ID for RAG
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [ragProcessingProgress, setRagProcessingProgress] = useState<Record<string, boolean>>({});
+  const [uploadingFiles, setUploadingFiles] = useState<Array<{ name: string; size: string }>>([]);
 
   // Use selected organization ID or fall back to user's organization
   const effectiveOrgId = selectedOrganizationId || user?.organization_id || null;
@@ -138,6 +186,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Fout",
         description: "Kon documenten niet laden.",
         variant: "destructive",
+        duration: 5000,
       });
     } finally {
       setLoading(false);
@@ -158,6 +207,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Leeg bestand",
           description: `${file.name} is leeg. Upload alleen bestanden met inhoud.`,
           variant: "destructive",
+          duration: 5000,
         });
         continue;
       }
@@ -182,6 +232,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: ".doc bestanden niet ondersteund",
           description: `${file.name} is een oud Word-formaat (.doc). Converteer het bestand naar .docx formaat en upload het opnieuw. Open het bestand in Microsoft Word en sla het op als .docx.`,
           variant: "destructive",
+          duration: 5000,
         });
         continue;
       }
@@ -191,6 +242,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Ongeldig bestandstype",
           description: `${file.name} heeft een ongeldig type. Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf).`,
           variant: "destructive",
+          duration: 5000,
         });
         continue;
       }
@@ -201,6 +253,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Bestand te groot",
           description: `${file.name} is te groot. Maximum grootte is 20MB.`,
           variant: "destructive",
+          duration: 5000,
         });
         continue;
       }
@@ -221,6 +274,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
               title: "Leeg bestand",
               description: `${file.name} bevat alleen lege regels. Upload alleen bestanden met inhoud.`,
               variant: "destructive",
+              duration: 5000,
             });
             continue;
           }
@@ -237,20 +291,60 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Bestand bestaat al",
           description: `Een bestand met de naam "${file.name}" bestaat al. Verwijder het bestaande bestand eerst of gebruik een andere naam.`,
           variant: "destructive",
+          duration: 5000,
         });
         continue;
       }
 
       try {
-        // Upload to Supabase Storage
+        // Track progress by filename
+        const fileNameKey = file.name;
+        const fileSizeStr = file.size < 1024 
+          ? `${file.size} B` 
+          : file.size < 1024 * 1024 
+          ? `${(file.size / 1024).toFixed(1)} KB` 
+          : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+        
+        // Add to uploading files list
+        setUploadingFiles((prev) => [...prev, { name: file.name, size: fileSizeStr }]);
+        
+        // Set initial upload progress
+        setUploadProgress((prev) => ({ ...prev, [fileNameKey]: 0 }));
+
+        // Upload to Supabase Storage with progress tracking
         const fileExt = file.name.split(".").pop();
         const fileName = `${effectiveOrgId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
+        // Estimate upload time based on file size (rough estimate: 1MB per second)
+        const estimatedUploadTime = Math.max(1000, (file.size / (1024 * 1024)) * 1000);
+        const progressInterval = 100; // Update every 100ms
+        const progressIncrement = (progressInterval / estimatedUploadTime) * 100;
+        
+        // Start progress simulation
+        let currentProgress = 0;
+        const progressTimer = setInterval(() => {
+          currentProgress = Math.min(currentProgress + progressIncrement, 90); // Cap at 90% until upload completes
+          setUploadProgress((prev) => ({ ...prev, [fileNameKey]: currentProgress }));
+        }, progressInterval);
+
+        // Perform actual upload
         const { error: uploadError } = await supabase.storage
           .from("documents")
           .upload(fileName, file);
 
-        if (uploadError) throw uploadError;
+        clearInterval(progressTimer);
+
+        if (uploadError) {
+          setUploadProgress((prev) => {
+            const newPrev = { ...prev };
+            delete newPrev[fileNameKey];
+            return newPrev;
+          });
+          throw uploadError;
+        }
+
+        // Complete upload progress
+        setUploadProgress((prev) => ({ ...prev, [fileNameKey]: 100 }));
 
         // Construct storage URL without /public/ (direct storage access)
         const storageUrl = `${supabaseUrl}/storage/v1/object/documents/${encodeURIComponent(fileName)}`;
@@ -279,9 +373,18 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           event_data: { file_name: file.name, file_size: file.size },
         });
 
+        // Remove from uploading files immediately and clear progress
+        setUploadingFiles((prev) => prev.filter(f => f.name !== file.name));
+        setUploadProgress((prev) => {
+          const newPrev = { ...prev };
+          delete newPrev[fileNameKey];
+          return newPrev;
+        });
+
         toast({
           title: "Document geüpload",
           description: `${file.name} is succesvol geüpload. Zet RAG aan om het document te gebruiken in de chat.`,
+          duration: 3000, // Auto-dismiss after 3 seconds
         });
 
         // Document wordt niet automatisch verwerkt - gebruiker moet RAG aanzetten
@@ -289,10 +392,19 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         // Reload documents
         await loadDocuments();
       } catch (error: any) {
+        // Clear progress on error - find by filename
+        const fileNameKey = file.name;
+        setUploadProgress((prev) => {
+          const newPrev = { ...prev };
+          delete newPrev[fileNameKey];
+          return newPrev;
+        });
+        setUploadingFiles((prev) => prev.filter(f => f.name !== file.name));
         toast({
           title: "Upload mislukt",
           description: error.message || "Er is een fout opgetreden bij het uploaden.",
           variant: "destructive",
+          duration: 5000,
         });
       }
     }
@@ -369,6 +481,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       toast({
         title: "Document verwijderd",
         description: `${documentToDelete.name} is verwijderd.`,
+        duration: 3000,
       });
 
       setDeleteDialogOpen(false);
@@ -379,6 +492,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Verwijderen mislukt",
         description: error.message || "Er is een fout opgetreden.",
         variant: "destructive",
+        duration: 5000,
       });
     }
   };
@@ -389,6 +503,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Geen downloadlink",
         description: "Er is geen bestand gekoppeld aan dit document.",
         variant: "destructive",
+        duration: 5000,
       });
       return;
     }
@@ -418,6 +533,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Download mislukt",
         description: "Het bestand kon niet worden geopend.",
         variant: "destructive",
+        duration: 5000,
       });
     }
   };
@@ -447,23 +563,41 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
       if (newValue) {
         // RAG ingeschakeld - verwerk document voor RAG
+        setRagProcessingProgress((prev) => ({ ...prev, [doc.id]: true }));
+
         toast({
           title: "RAG ingeschakeld",
           description: `${doc.name} wordt verwerkt voor RAG...`,
+          duration: 2000,
         });
 
         try {
           await processDocumentForRAG(doc.id, effectiveOrgId);
+          
+          // Clear progress
+          setRagProcessingProgress((prev) => {
+            const newPrev = { ...prev };
+            delete newPrev[doc.id];
+            return newPrev;
+          });
+          
           toast({
             title: "✅ Document verwerkt",
             description: `${doc.name} is verwerkt en klaar voor gebruik in de chat.`,
+            duration: 3000,
           });
         } catch (error: any) {
           console.error(`Document processing failed for ${doc.name}:`, error);
+          setRagProcessingProgress((prev) => {
+            const newPrev = { ...prev };
+            delete newPrev[doc.id];
+            return newPrev;
+          });
           toast({
             title: "⚠️ RAG ingeschakeld, maar verwerking mislukt",
             description: `${doc.name} is ingeschakeld voor RAG, maar verwerking is mislukt. Probeer het later opnieuw.`,
             variant: "destructive",
+            duration: 5000,
           });
         }
       } else {
@@ -480,6 +614,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         toast({
           title: "RAG uitgeschakeld",
           description: `${doc.name} wordt niet meer gebruikt voor RAG queries. Embeddings zijn verwijderd.`,
+          duration: 3000,
         });
       }
     } catch (error: any) {
@@ -487,12 +622,14 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Fout",
         description: error.message || "Kon RAG instelling niet updaten.",
         variant: "destructive",
+        duration: 5000,
       });
     }
   };
 
   return (
     <div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">
@@ -555,11 +692,41 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
       {/* Documents List */}
       <div className="space-y-3">
+        {/* Show uploading files at the top - only if not already in documents list */}
+        {uploadingFiles
+          .filter((uploadingFile) => !filteredDocuments.some((doc) => doc.name === uploadingFile.name))
+          .map((uploadingFile) => {
+            const progress = uploadProgress[uploadingFile.name] || 0;
+            return (
+              <div
+                key={`uploading-${uploadingFile.name}`}
+                className="glass rounded-xl p-4 flex items-center gap-4 border-primary/30"
+              >
+                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-primary animate-pulse" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-foreground truncate">{uploadingFile.name}</h4>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span>{uploadingFile.size}</span>
+                    <span>•</span>
+                    <span>Uploaden...</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <CircularProgress value={progress} size={40} />
+                </div>
+              </div>
+            );
+          })}
+
         {loading ? (
           <div className="glass rounded-xl p-8 text-center">
             <p className="text-muted-foreground">Documenten laden...</p>
           </div>
-        ) : filteredDocuments.length === 0 ? (
+        ) : filteredDocuments.length === 0 && uploadingFiles.length === 0 ? (
           <div className="glass rounded-xl p-8 text-center">
             <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">Geen documenten gevonden</p>
@@ -588,6 +755,26 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {/* Show upload progress if uploading */}
+                  {uploadProgress[doc.name] !== undefined && (
+                    <CircularProgress value={uploadProgress[doc.name]} size={40} />
+                  )}
+                  
+                  {/* Show RAG processing indicator */}
+                  {ragProcessingProgress[doc.id] && !uploadProgress[doc.name] && (
+                    <div className="relative inline-flex items-center justify-center" style={{ width: 40, height: 40 }}>
+                      <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full" />
+                      <div 
+                        className="absolute inset-0 border-4 border-blue-500 rounded-full animate-spin"
+                        style={{
+                          borderTopColor: 'transparent',
+                          borderRightColor: 'transparent',
+                        }}
+                      />
+                      <FileText className="w-4 h-4 text-blue-500" />
+                    </div>
+                  )}
+                  
                   <div className="flex items-center gap-2">
                     <Label htmlFor={`rag-${doc.id}`} className="text-sm text-muted-foreground cursor-pointer">
                       RAG
@@ -596,6 +783,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                       id={`rag-${doc.id}`}
                       checked={doc.use_for_rag}
                       onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
+                      disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
                     />
                   </div>
                 </div>

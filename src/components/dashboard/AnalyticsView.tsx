@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { BarChart, TrendingUp, MessageSquare, FileText, Users, Clock, Calendar, Download } from "lucide-react";
+import { BarChart, TrendingUp, MessageSquare, FileText, Users, Clock, Calendar, Download, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -31,6 +31,7 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
   const [stats, setStats] = useState({
     questionsAsked: 0,
     documentsUploaded: 0,
+    documentsProcessed: 0,
     activeUsers: 0,
     avgResponseTime: "0s",
   });
@@ -88,8 +89,52 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       // Count questions asked
       const questionsCount = analyticsData?.filter((a) => a.event_type === "question_asked").length || 0;
 
-      // Count documents uploaded
-      const documentsCount = analyticsData?.filter((a) => a.event_type === "document_uploaded").length || 0;
+      // Count total documents uploaded from documents table
+      let documentsQuery = supabase
+        .from("documents")
+        .select("id", { count: "exact", head: true });
+      
+      if (effectiveOrgId) {
+        documentsQuery = documentsQuery.eq("organization_id", effectiveOrgId);
+      }
+      
+      const { count: totalDocumentsCount } = await documentsQuery;
+
+      // Count processed documents (documents that have document_sections)
+      let processedDocumentsCount = 0;
+      
+      if (effectiveOrgId) {
+        // Get all document IDs for this organization first
+        const { data: orgDocuments } = await supabase
+          .from("documents")
+          .select("id")
+          .eq("organization_id", effectiveOrgId);
+        
+        if (orgDocuments && orgDocuments.length > 0) {
+          const documentIds = orgDocuments.map((d) => d.id);
+          // Get unique document IDs that have sections
+          const { data: sectionsData } = await supabase
+            .from("document_sections")
+            .select("document_id")
+            .in("document_id", documentIds);
+          
+          if (sectionsData && sectionsData.length > 0) {
+            // Count unique document_ids
+            const uniqueDocIds = new Set(sectionsData.map((s: any) => s.document_id));
+            processedDocumentsCount = uniqueDocIds.size;
+          }
+        }
+      } else {
+        // For admin viewing all organizations, get all document sections
+        const { data: allSections } = await supabase
+          .from("document_sections")
+          .select("document_id");
+        
+        if (allSections && allSections.length > 0) {
+          const uniqueDocIds = new Set(allSections.map((s: any) => s.document_id));
+          processedDocumentsCount = uniqueDocIds.size;
+        }
+      }
 
       // Count active users
       let usersQuery = supabase.from("users").select("id", { count: "exact", head: true });
@@ -121,7 +166,8 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
 
       setStats({
         questionsAsked: questionsCount,
-        documentsUploaded: documentsCount,
+        documentsUploaded: totalDocumentsCount || 0,
+        documentsProcessed: processedDocumentsCount,
         activeUsers: usersCount || 0,
         avgResponseTime,
       });
@@ -283,7 +329,7 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-8">
         <div className="glass rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -307,7 +353,20 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
           <p className="text-2xl font-display font-bold text-foreground">
             {stats.documentsUploaded}
           </p>
-          <p className="text-sm text-muted-foreground">Documenten</p>
+          <p className="text-sm text-muted-foreground">Geüploade documenten</p>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-blue-500" />
+            </div>
+            <TrendingUp className="w-4 h-4 text-green-500" />
+          </div>
+          <p className="text-2xl font-display font-bold text-foreground">
+            {stats.documentsProcessed}
+          </p>
+          <p className="text-sm text-muted-foreground">Verwerkte documenten</p>
         </div>
 
         <div className="glass rounded-2xl p-5">
