@@ -1,6 +1,8 @@
 // Document processing utilities for RAG
 // Splits documents into chunks and generates embeddings
 
+import { supabase } from '@/lib/supabase';
+
 interface Chunk {
   text: string;
   index: number;

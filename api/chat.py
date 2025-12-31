@@ -659,13 +659,18 @@ agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 # FastAPI app
 app = FastAPI(title="DocuBot Assistant API")
 
-# CORS middleware
+# CORS middleware - restrict to allowed origins
+allowed_origins = os.environ.get("ALLOWED_ORIGINS", "").split(",") if os.environ.get("ALLOWED_ORIGINS") else []
+# If no origins specified, default to empty list (strict) or allow all for development
+# In production, set ALLOWED_ORIGINS environment variable
+cors_origins = allowed_origins if allowed_origins else ["*"]  # Fallback to * for development
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["authorization", "content-type"],
 )
 
 # Request/Response models
@@ -689,6 +694,58 @@ class ProcessDocumentResponse(BaseModel):
     message: str
     chunksProcessed: Optional[int] = None
     error: Optional[str] = None
+
+# Authentication helper
+async def verify_auth_token(authorization: Optional[str], organization_id: str) -> str:
+    """Verify JWT token and return user ID. Raises HTTPException if invalid."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    
+    # Extract token from "Bearer <token>"
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+    
+    token = authorization.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    # Verify token with Supabase
+    # Create a client with anon key to verify user token
+    supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY")
+    if not supabase_anon_key:
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    
+    from supabase.client import create_client as create_supabase_client
+    supabase_auth = create_supabase_client(supabase_url, supabase_anon_key)
+    
+    # Verify token
+    try:
+        # Use the token to get user info
+        user_response = supabase_auth.auth.get_user(token)
+        if not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        
+        user_id = user_response.user.id
+        
+        # Verify user exists in our database
+        user_data = supabase.table("users").select("id, role").eq("id", user_id).execute()
+        if not user_data.data or len(user_data.data) == 0:
+            raise HTTPException(status_code=403, detail="User not found in database")
+        
+        # Verify user has access to this organization
+        user_org = supabase.table("user_organizations").select("organization_id").eq("user_id", user_id).eq("organization_id", organization_id).execute()
+        user_role = user_data.data[0].get("role")
+        
+        # Admins have access to all organizations
+        if not user_org.data and user_role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied: You don't have access to this organization")
+        
+        return user_id
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Auth verification error: {e}")
+        raise HTTPException(status_code=401, detail="Token verification failed")
 
 # Chat history storage (in-memory, you might want to use database)
 chat_histories = {}
@@ -769,6 +826,9 @@ async def chat_endpoint(
     trace = None
     
     try:
+        # Verify authentication
+        verified_user_id = await verify_auth_token(authorization, request.organizationId)
+        
         # Create Langfuse trace
         trace = None
         trace_context = None
@@ -1437,6 +1497,9 @@ async def process_document(
     start_time = time.time()
     
     try:
+        # Verify authentication
+        verified_user_id = await verify_auth_token(authorization, request.organizationId)
+        
         # Get document info from database
         doc_result = supabase.table("documents").select("file_url, name, file_type").eq("id", request.documentId).single().execute()
         
