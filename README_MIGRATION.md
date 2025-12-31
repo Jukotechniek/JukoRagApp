@@ -40,6 +40,10 @@ OPENAI_API_KEY=your_openai_api_key
 LANGFUSE_SECRET_KEY=your_langfuse_secret_key
 LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
 LANGFUSE_HOST=https://cloud.langfuse.com
+
+# N8N Webhook (server-only, optioneel voor foutrapportage)
+N8N_WEBHOOK_URL=your_n8n_webhook_url
+# Of gebruik NEXT_PUBLIC_N8N_WEBHOOK_URL als je het client-side wilt gebruiken
 ```
 
 ### 3. Run development server
@@ -96,6 +100,20 @@ Response:
   }
 }
 ```
+
+## Foutrapportage
+
+Gebruikers kunnen foute antwoorden rapporteren via een vlag-knop naast elk assistant bericht. Wanneer een gebruiker op deze knop klikt, wordt er een melding naar de geconfigureerde N8N webhook gestuurd met:
+
+- `user_id`: ID van de gebruiker die de fout rapporteert
+- `organization_id`: ID van de organisatie
+- `message_id`: ID van het bericht dat gerapporteerd wordt
+- `message_content`: Inhoud van het bericht
+- `timestamp`: ISO timestamp van wanneer de melding is gemaakt
+- `report_type`: "incorrect_answer"
+
+De API route is beschikbaar op `/api/report-error` en vereist:
+- `N8N_WEBHOOK_URL` of `NEXT_PUBLIC_N8N_WEBHOOK_URL` environment variable
 
 ## Frontend
 

@@ -23,6 +23,7 @@ import {
   Building,
   Menu,
   Coins,
+  Flag,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -57,6 +58,7 @@ export default function DashboardPage() {
   const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Redirect naar login als niet ingelogd
@@ -401,6 +403,46 @@ export default function DashboardPage() {
     }
   };
 
+  const handleReportError = async (messageId: string, messageContent: string) => {
+    if (!user || !effectiveOrgId || reportingMessageId === messageId) return;
+
+    setReportingMessageId(messageId);
+    try {
+      const response = await fetch('/api/report-error', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messageId,
+          messageContent,
+          userId: user.id,
+          organizationId: effectiveOrgId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to report error');
+      }
+
+      toast({
+        title: "Bedankt!",
+        description: "Het foute antwoord is gerapporteerd. We zullen dit bekijken.",
+      });
+    } catch (error: any) {
+      console.error('Error reporting incorrect answer:', error);
+      toast({
+        title: "Fout",
+        description: error.message || "Er is een fout opgetreden bij het rapporteren.",
+        variant: "destructive",
+      });
+    } finally {
+      setReportingMessageId(null);
+    }
+  };
+
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -572,8 +614,8 @@ export default function DashboardPage() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${
-                      message.role === "user" ? "justify-end" : "justify-start"
+                    className={`flex flex-col ${
+                      message.role === "user" ? "items-end" : "items-start"
                     }`}
                   >
                     <div
@@ -589,6 +631,18 @@ export default function DashboardPage() {
                         <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
                       )}
                     </div>
+                    {message.role === "assistant" && message.id !== "welcome" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => handleReportError(message.id, message.content)}
+                        disabled={reportingMessageId === message.id}
+                      >
+                        <Flag className="h-3 w-3 mr-1.5" />
+                        {reportingMessageId === message.id ? "Rapporteren..." : "Rapporteer fout antwoord"}
+                      </Button>
+                    )}
                   </div>
                 ))}
                 {/* Invisible element to scroll to */}
