@@ -1,6 +1,7 @@
 # import basics
 import os
 import re
+import base64
 from contextvars import ContextVar
 from urllib.parse import urlparse, unquote
 from dotenv import load_dotenv
@@ -42,6 +43,14 @@ try:
 except ImportError:
     PYMUPDF_AVAILABLE = False
     print("Warning: PyMuPDF (fitz) not available. Footer extraction will be limited.")
+
+# For Mistral OCR
+try:
+    from mistralai import Mistral
+    MISTRAL_AVAILABLE = True
+except ImportError:
+    MISTRAL_AVAILABLE = False
+    print("Warning: mistralai not available. Mistral OCR will not be available.")
 
 # import supabase db
 from supabase.client import Client, create_client
@@ -659,25 +668,6 @@ agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
 # FastAPI app
 app = FastAPI(title="DocuBot Assistant API")
-
-# Add logging middleware to debug CORS issues
-@app.middleware("http")
-async def log_requests(request, call_next):
-    """Log all requests for debugging"""
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"Incoming request: {request.method} {request.url.path}")
-    logger.info(f"Headers: {dict(request.headers)}")
-    
-    try:
-        response = await call_next(request)
-        logger.info(f"Response status: {response.status_code}")
-        return response
-    except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        raise
 
 # CORS middleware - restrict to allowed origins
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
@@ -1405,16 +1395,241 @@ def extract_footer_info_from_pdf(pdf_path: str, page_num: int) -> dict:
     
     return footer_info
 
+def encode_file_to_base64(file_path: str) -> str:
+    """Encode a file to base64 string for Mistral OCR API.
+    
+    Args:
+        file_path: Path to the file to encode
+        
+    Returns:
+        Base64 encoded string of the file content
+    """
+    try:
+        with open(file_path, "rb") as file:
+            file_data = file.read()
+            return base64.b64encode(file_data).decode('utf-8')
+    except Exception as e:
+        raise Exception(f"Failed to encode file to base64: {str(e)}")
+
+def extract_text_from_pdf_with_mistral_ocr(file_path: str, file_name: str) -> List[Document]:
+    """Extract text from PDF using Mistral OCR API.
+    
+    Args:
+        file_path: Path to the PDF file
+        file_name: Name of the file for metadata
+        
+    Returns:
+        List of Document objects, one per page
+    """
+    if not MISTRAL_AVAILABLE:
+        raise Exception("mistralai library not installed. Install it with: pip install mistralai")
+    
+    api_key = os.environ.get("MISTRAL_API_KEY")
+    if not api_key:
+        raise Exception("MISTRAL_API_KEY environment variable is not set")
+    
+    print(f"[MISTRAL OCR] Starting OCR extraction for: {file_name}")
+    
+    try:
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+        
+        # Encode PDF to base64
+        print(f"[MISTRAL OCR] Encoding PDF to base64...")
+        base64_file = encode_file_to_base64(file_path)
+        
+        documents = []
+        
+        # Try using Mistral's OCR API
+        # Based on Mistral documentation, use ocr.process method
+        try:
+            # Method 1: Try ocr.process if available
+            if hasattr(client, 'ocr') and hasattr(client.ocr, 'process'):
+                print(f"[MISTRAL OCR] Using ocr.process method")
+                
+                # Use base64 data URL format (as shown in working code)
+                document_url = f"data:application/pdf;base64,{base64_file}"
+                
+                try:
+                    # Use working format: snake_case "document_url" (not camelCase)
+                    ocr_response = client.ocr.process(
+                        model="mistral-ocr-latest",
+                        document={
+                            "type": "document_url",  # String, not variable
+                            "document_url": document_url  # snake_case, not camelCase
+                        },
+                        include_image_base64=False
+                    )
+                except Exception as e1:
+                    print(f"[MISTRAL OCR] First attempt failed: {e1}, trying alternative model")
+                    try:
+                        # Try with alternative model name
+                        ocr_response = client.ocr.process(
+                            model="CX-9",
+                            document={
+                                "type": "document_url",
+                                "document_url": document_url
+                            },
+                            include_image_base64=False
+                        )
+                    except Exception as e2:
+                        print(f"[MISTRAL OCR] Second attempt failed: {e2}")
+                        raise
+                
+                # Process pages from OCR response
+                # Response is an OCRResponse object, not a dictionary
+                # Access attributes directly: ocr_response.pages, page.markdown, etc.
+                if hasattr(ocr_response, 'pages') and ocr_response.pages:
+                    print(f"[MISTRAL OCR] Processing {len(ocr_response.pages)} pages")
+                    for page in ocr_response.pages:
+                        page_index = page.index if hasattr(page, 'index') else 0
+                        # According to docs, the text is in 'markdown' attribute
+                        page_text = page.markdown if hasattr(page, 'markdown') else ''
+                        
+                        if not page_text:
+                            print(f"[MISTRAL OCR] Warning: No markdown text found for page {page_index + 1}")
+                            # Try alternative attributes if markdown is not available
+                            if hasattr(page, 'text'):
+                                page_text = page.text
+                            elif hasattr(page, 'content'):
+                                page_text = page.content
+                            
+                            if not page_text:
+                                continue
+                        
+                        # No normalization needed - Mistral OCR already provides clean text
+                        doc = Document(
+                            page_content=page_text,
+                            metadata={
+                                "source": file_name,
+                                "page": page_index + 1,
+                                "actual_page": page_index + 1,
+                                "extraction_method": "mistral_ocr"
+                            }
+                        )
+                        documents.append(doc)
+                    print(f"[MISTRAL OCR] Successfully extracted {len(documents)} pages")
+                else:
+                    # If response structure is different, try to extract any text
+                    print(f"[MISTRAL OCR] Warning: Unexpected response structure")
+                    # Try to access as object attributes
+                    if hasattr(ocr_response, 'content'):
+                        text = ocr_response.content
+                        documents.append(Document(
+                            page_content=text,
+                            metadata={"source": file_name, "extraction_method": "mistral_ocr"}
+                        ))
+                        print(f"[MISTRAL OCR] Successfully extracted text ({len(text)} characters)")
+                    elif hasattr(ocr_response, 'markdown'):
+                        text = ocr_response.markdown
+                        documents.append(Document(
+                            page_content=text,
+                            metadata={"source": file_name, "extraction_method": "mistral_ocr"}
+                        ))
+                        print(f"[MISTRAL OCR] Successfully extracted text ({len(text)} characters)")
+                    else:
+                        raise Exception(f"Could not extract text from OCR response. Response type: {type(ocr_response)}, attributes: {dir(ocr_response)}")
+            else:
+                # Method 2: Fallback to vision model if OCR endpoint not available
+                # Use Mistral's vision model (Pixtral) for OCR
+                print(f"[MISTRAL OCR] Using vision model (Pixtral) as fallback")
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Extract all text from this PDF document. Preserve the structure, formatting, and page breaks. Return the text exactly as it appears in the document."
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:application/pdf;base64,{base64_file}"
+                                }
+                            }
+                        ]
+                    }
+                ]
+                
+                # Use Mistral's vision model for OCR
+                chat_response = client.chat.complete(
+                    model="pixtral-12b-2409",  # Mistral's vision model
+                    messages=messages
+                )
+                
+                extracted_text = chat_response.choices[0].message.content
+                # No normalization needed - Mistral vision model already provides clean text
+                
+                # Return as single document (or split by page markers if available)
+                documents.append(Document(
+                    page_content=extracted_text,
+                    metadata={"source": file_name, "extraction_method": "mistral_vision"}
+                ))
+                print(f"[MISTRAL OCR] Successfully extracted text using vision model ({len(extracted_text)} characters)")
+                
+        except AttributeError as e:
+            # If the API structure is different, try alternative approach
+            print(f"[MISTRAL OCR] ERROR: API structure not recognized: {str(e)}")
+            raise Exception(f"Mistral OCR API structure not recognized: {str(e)}. Please check Mistral API documentation.")
+        except Exception as e:
+            # Re-raise with more context
+            print(f"[MISTRAL OCR] ERROR: Failed to call API: {str(e)}")
+            raise Exception(f"Failed to call Mistral OCR API: {str(e)}")
+        
+        if not documents:
+            print(f"[MISTRAL OCR] ERROR: No text extracted")
+            raise Exception("No text extracted from PDF using Mistral OCR")
+        
+        print(f"[MISTRAL OCR] Successfully completed extraction for: {file_name}")
+        return documents
+            
+    except Exception as e:
+        print(f"[MISTRAL OCR] ERROR: Failed to extract text: {str(e)}")
+        raise Exception(f"Failed to extract text from PDF using Mistral OCR: {str(e)}")
+
 def extract_documents_from_file(file_path: str, file_type: str, file_name: str) -> List[Document]:
     """Extract documents from various file types, preserving page numbers and footer info for PDFs.
     
-    For PDFs, uses PyMuPDF (fitz) as primary extractor to avoid spaced letters issue.
+    For PDFs, uses Mistral OCR as primary extractor if available, otherwise falls back to PyMuPDF (fitz).
     """
     try:
         if file_type == 'application/pdf' or file_name.lower().endswith('.pdf'):
+            # Try Mistral OCR first if available
+            use_mistral_ocr = MISTRAL_AVAILABLE and os.environ.get("MISTRAL_API_KEY")
+            
+            if use_mistral_ocr:
+                try:
+                    print(f"[PDF EXTRACTION] Using Mistral OCR for: {file_name}")
+                    documents = extract_text_from_pdf_with_mistral_ocr(file_path, file_name)
+                    print(f"[PDF EXTRACTION] Mistral OCR completed: {len(documents)} pages extracted")
+                    
+                    # Try to extract footer info using PyMuPDF if available (for metadata)
+                    if PYMUPDF_AVAILABLE:
+                        try:
+                            pdf = fitz.open(file_path)
+                            for i, doc in enumerate(documents):
+                                if i < len(pdf):
+                                    footer_info = extract_footer_info_from_pdf(file_path, i)
+                                    # Update metadata with footer info
+                                    if footer_info.get("page_number_footer"):
+                                        doc.metadata["page_number_footer"] = footer_info["page_number_footer"]
+                                        doc.metadata["page"] = footer_info["page_number_footer"]
+                                    if footer_info.get("project_description"):
+                                        doc.metadata["project_description"] = footer_info["project_description"]
+                            pdf.close()
+                        except Exception as e:
+                            print(f"Warning: Could not extract footer info: {e}")
+                    
+                    return documents
+                except Exception as e:
+                    print(f"[PDF EXTRACTION] Mistral OCR failed ({str(e)}), falling back to PyMuPDF")
+                    # Fall through to PyMuPDF fallback
+            
+            # Fallback to PyMuPDF if Mistral OCR is not available or failed
             if not PYMUPDF_AVAILABLE:
                 raise Exception("PyMuPDF (fitz) is required for PDF extraction but not available. Install it with: pip install pymupdf")
             
+            print(f"[PDF EXTRACTION] Using PyMuPDF for: {file_name}")
             # Use PyMuPDF as primary extractor (not PyPDFLoader) to avoid spaced letters
             pdf = fitz.open(file_path)
             documents = []
@@ -1447,7 +1662,8 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                     "source": file_name,
                     "page": page_footer,  # Footer pagina nummer (primair)
                     "actual_page": actual_page,  # Echte paginanummer (begint bij 1)
-                    "is_sparse_text": is_sparse_text
+                    "is_sparse_text": is_sparse_text,
+                    "extraction_method": "pymupdf"
                 }
                 
                 # Keep page_number_footer for backwards compatibility

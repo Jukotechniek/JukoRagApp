@@ -16,4 +16,5 @@ unstructured
 pandas
 openpyxl
 pymupdf
+mistralai
 
