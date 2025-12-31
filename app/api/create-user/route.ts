@@ -3,15 +3,79 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { email, name, role, organizationId, currentUserId, currentUserRole } = body;
-
-    if (!email || !name || !organizationId || !currentUserId || !currentUserRole) {
+    // Get authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: email, name, organizationId, currentUserId, currentUserRole' },
+        { success: false, error: "Missing authorization header" },
+        { status: 401 }
+      );
+    }
+
+    // Extract token from "Bearer <token>"
+    const token = authHeader.replace("Bearer ", "");
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: "Invalid authorization header format" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    const { email, name, role, organizationId } = body;
+
+    if (!email || !name || !organizationId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields: email, name, organizationId' },
         { status: 400 }
       );
     }
+
+    // Get Supabase URL and anon key for user verification
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json(
+        { success: false, error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
+    // Create client with user's token to verify authentication
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    // Verify user is authenticated
+    const { data: { user: authUser }, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    if (authError || !authUser) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or expired token" },
+        { status: 401 }
+      );
+    }
+
+    // Get user data from database to verify role
+    const { data: userData, error: userError } = await supabaseClient
+      .from("users")
+      .select("id, role")
+      .eq("id", authUser.id)
+      .single();
+
+    if (userError || !userData) {
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 }
+      );
+    }
+
+    const currentUserId = userData.id;
+    const currentUserRole = userData.role;
 
     // Authorization check
     if (currentUserRole === 'manager') {
@@ -52,19 +116,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get Supabase URL and Service Role Key from environment
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    // Get Service Role Key from environment (URL and anon key already retrieved above)
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase configuration');
+    if (!supabaseServiceKey) {
+      console.error('Missing Supabase service role key');
       return NextResponse.json(
         { success: false, error: 'Server configuration error' },
         { status: 500 }
       );
     }
 
-    // Create admin client with service role key
+    // Create admin client with service role key (only after verifying user is authorized)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,

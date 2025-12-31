@@ -169,15 +169,56 @@ serve(async (req) => {
       );
     }
 
+    // Verify user has access to this organization
+    // Create a client with user's token to verify access
+    const supabaseUser = createClient(supabaseUrl, supabaseServiceKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    const { data: { user: authUser }, error: authError } = await supabaseUser.auth.getUser();
+    if (authError || !authUser) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if user has access to this organization
+    const { data: userOrg } = await supabase
+      .from("user_organizations")
+      .select("organization_id")
+      .eq("user_id", authUser.id)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    // Check if user is admin
+    const { data: userData } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", authUser.id)
+      .maybeSingle();
+
+    if (!userOrg && userData?.role !== "admin") {
+      return new Response(
+        JSON.stringify({ error: "Access denied: You don't have access to this organization" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // If content is not provided, fetch and extract from document
     let textContent = content;
     
     if (!textContent) {
-      // Get document info
+      // Get document info - verify it belongs to the organization
       const { data: doc, error: docError } = await supabase
         .from('documents')
-        .select('file_url, name, file_type')
+        .select('file_url, name, file_type, organization_id')
         .eq('id', documentId)
+        .eq('organization_id', organizationId) // Ensure document belongs to organization
         .single();
 
       if (docError || !doc) {
