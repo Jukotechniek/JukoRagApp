@@ -5,6 +5,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from 'next-themes';
 import { useState } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -18,13 +19,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          {children}
-          <Toaster />
-          <Sonner />
-        </AuthProvider>
-      </TooltipProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <TooltipProvider>
+          <AuthProvider>
+            {children}
+            <Toaster />
+            <Sonner />
+          </AuthProvider>
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

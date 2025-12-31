@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
 
     // Try to find existing user by email first
     let userId: string | null = null;
+    let inviteWasSent = false;
     
     // List users to find by email (unfortunately Admin API doesn't have getUserByEmail)
     // We'll use pagination to limit the load
@@ -86,23 +87,29 @@ export async function POST(req: NextRequest) {
       const existingAuthUser = usersList.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
       if (existingAuthUser) {
         userId = existingAuthUser.id;
+        console.log(`User ${email} already exists in auth, using existing user ID: ${userId}`);
       }
     }
 
     if (!userId) {
       // Invite user by email - they will receive an email to set their password
-      // Get the site URL for redirect
+      // Get the site URL for redirect - must be absolute URL
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 
                      (process.env.NEXT_PUBLIC_SUPABASE_URL 
-                       ? process.env.NEXT_PUBLIC_SUPABASE_URL.replace('.supabase.co', '')
+                       ? `https://${process.env.NEXT_PUBLIC_SUPABASE_URL.replace('https://', '').split('.')[0]}.vercel.app`
                        : 'http://localhost:3000');
+      
+      // For localhost, use localhost directly
+      const redirectUrl = siteUrl.includes('localhost') 
+        ? 'http://localhost:3000/auth'
+        : `${siteUrl}/auth`;
       
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
         data: {
           name,
           role: role || 'technician',
         },
-        redirectTo: `${siteUrl}/auth`,
+        redirectTo: redirectUrl,
       });
 
       if (inviteError) {
@@ -117,6 +124,7 @@ export async function POST(req: NextRequest) {
             const existingUser = retryList.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
             if (existingUser) {
               userId = existingUser.id;
+              console.log(`User ${email} already exists, using existing user ID: ${userId}`);
             } else {
               console.error('Error inviting user - user exists but not found:', inviteError);
               return NextResponse.json(
@@ -134,7 +142,12 @@ export async function POST(req: NextRequest) {
         }
       } else if (inviteData?.user) {
         userId = inviteData.user.id;
+        inviteWasSent = true;
+        console.log(`Invite email sent successfully to ${email}, user ID: ${userId}`);
+        // Note: Supabase doesn't return a confirmation that the email was sent,
+        // but if there's no error and we have a user, the invite was processed
       } else {
+        console.error('Failed to invite user - no user returned in response');
         return NextResponse.json(
           { success: false, error: 'Failed to invite user - no user returned' },
           { status: 500 }
@@ -210,7 +223,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       userId,
-      message: 'User created successfully',
+      message: inviteWasSent 
+        ? 'User created and invite email sent successfully' 
+        : 'User linked to organization successfully',
+      inviteSent: inviteWasSent,
     });
   } catch (error: any) {
     console.error('Error in create-user API:', error);

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Settings, User, Bell, Shield, Globe, Moon, Sun, Monitor, Mail, Phone, Building } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Settings, User, Shield, Globe, Moon, Sun, Monitor, Building, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,31 +14,26 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/lib/supabase";
+import { useTheme } from "next-themes";
 
 const SettingsView = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
     email: user?.email || "",
-    organization: user?.organization_id || "",
-    phone: "",
-  });
-  const [notifications, setNotifications] = useState({
-    email: true,
-    push: false,
-    weekly: true,
-    updates: true,
   });
   const [security, setSecurity] = useState({
     twoFactor: false,
     sessionTimeout: "30",
   });
-  const [preferences, setPreferences] = useState({
-    language: "nl",
-    theme: "system",
-    timezone: "Europe/Amsterdam",
+  const [organizationSettings, setOrganizationSettings] = useState({
+    techniciansCanViewDocuments: false,
   });
+  const [loadingOrgSettings, setLoadingOrgSettings] = useState(true);
 
   const handleSaveProfile = () => {
     toast({
@@ -54,12 +49,57 @@ const SettingsView = () => {
     });
   };
 
-  const handleSavePreferences = () => {
+  // Handle theme change
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme);
     toast({
-      title: "Voorkeuren bijgewerkt",
-      description: "Uw voorkeuren zijn opgeslagen.",
+      title: "Thema bijgewerkt",
+      description: "Uw thema is opgeslagen.",
     });
   };
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Load organization settings
+  useEffect(() => {
+    if (user?.organization_id && (user.role === "manager" || user.role === "admin")) {
+      loadOrganizationSettings();
+    }
+  }, [user?.organization_id, user?.role]);
+
+  const loadOrganizationSettings = async () => {
+    if (!user?.organization_id) return;
+
+    try {
+      setLoadingOrgSettings(true);
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("technicians_can_view_documents")
+        .eq("id", user.organization_id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setOrganizationSettings({
+          techniciansCanViewDocuments: data.technicians_can_view_documents || false,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error loading organization settings:", error);
+      toast({
+        title: "Fout",
+        description: "Kon organisatie-instellingen niet laden.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingOrgSettings(false);
+    }
+  };
+
 
   return (
     <div>
@@ -69,11 +109,13 @@ const SettingsView = () => {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${(user?.role === "manager" || user?.role === "admin") ? "grid-cols-4" : "grid-cols-3"}`}>
           <TabsTrigger value="profile">Profiel</TabsTrigger>
-          <TabsTrigger value="notifications">Notificaties</TabsTrigger>
           <TabsTrigger value="security">Beveiliging</TabsTrigger>
           <TabsTrigger value="preferences">Voorkeuren</TabsTrigger>
+          {(user?.role === "manager" || user?.role === "admin") && (
+            <TabsTrigger value="organization">Organisatie</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Profile Tab */}
@@ -98,83 +140,20 @@ const SettingsView = () => {
                   id="profile-email"
                   type="email"
                   value={profileData.email}
-                  onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                  readOnly
+                  className="bg-muted"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="profile-org">Organisatie</Label>
                 <Input
                   id="profile-org"
-                  value={profileData.organization}
-                  onChange={(e) => setProfileData({ ...profileData, organization: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="profile-phone">Telefoonnummer</Label>
-                <Input
-                  id="profile-phone"
-                  type="tel"
-                  value={profileData.phone}
-                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                  placeholder="+31 6 12345678"
+                  value={user?.organization_name || "Geen organisatie"}
+                  readOnly
+                  className="bg-muted"
                 />
               </div>
               <Button variant="hero" onClick={handleSaveProfile}>
-                Opslaan
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications" className="space-y-6">
-          <div className="glass rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <Bell className="w-5 h-5 text-primary" />
-              <h2 className="font-display font-semibold text-foreground">Notificatie Instellingen</h2>
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Email notificaties</Label>
-                  <p className="text-sm text-muted-foreground">Ontvang notificaties via email</p>
-                </div>
-                <Switch
-                  checked={notifications.email}
-                  onCheckedChange={(checked) => setNotifications({ ...notifications, email: checked })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Push notificaties</Label>
-                  <p className="text-sm text-muted-foreground">Ontvang push notificaties in de browser</p>
-                </div>
-                <Switch
-                  checked={notifications.push}
-                  onCheckedChange={(checked) => setNotifications({ ...notifications, push: checked })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Wekelijks overzicht</Label>
-                  <p className="text-sm text-muted-foreground">Ontvang een wekelijks overzicht per email</p>
-                </div>
-                <Switch
-                  checked={notifications.weekly}
-                  onCheckedChange={(checked) => setNotifications({ ...notifications, weekly: checked })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Product updates</Label>
-                  <p className="text-sm text-muted-foreground">Ontvang updates over nieuwe features</p>
-                </div>
-                <Switch
-                  checked={notifications.updates}
-                  onCheckedChange={(checked) => setNotifications({ ...notifications, updates: checked })}
-                />
-              </div>
-              <Button variant="hero" onClick={() => toast({ title: "Notificaties opgeslagen", description: "Uw notificatie-instellingen zijn bijgewerkt." })}>
                 Opslaan
               </Button>
             </div>
@@ -237,74 +216,121 @@ const SettingsView = () => {
             </div>
             <div className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="language">Taal</Label>
-                <Select
-                  value={preferences.language}
-                  onValueChange={(value) => setPreferences({ ...preferences, language: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nl">Nederlands</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="de">Deutsch</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="theme">Thema</Label>
-                <Select
-                  value={preferences.theme}
-                  onValueChange={(value) => setPreferences({ ...preferences, theme: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="system">
-                      <div className="flex items-center gap-2">
-                        <Monitor className="w-4 h-4" />
-                        Systeem
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="light">
-                      <div className="flex items-center gap-2">
-                        <Sun className="w-4 h-4" />
-                        Licht
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="dark">
-                      <div className="flex items-center gap-2">
-                        <Moon className="w-4 h-4" />
-                        Donker
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                {mounted && (
+                  <Select
+                    value={theme || "system"}
+                    onValueChange={handleThemeChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="system">
+                        <div className="flex items-center gap-2">
+                          <Monitor className="w-4 h-4" />
+                          Systeem
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="light">
+                        <div className="flex items-center gap-2">
+                          <Sun className="w-4 h-4" />
+                          Licht
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="dark">
+                        <div className="flex items-center gap-2">
+                          <Moon className="w-4 h-4" />
+                          Donker
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Tijdzone</Label>
-                <Select
-                  value={preferences.timezone}
-                  onValueChange={(value) => setPreferences({ ...preferences, timezone: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Europe/Amsterdam">Amsterdam (CET)</SelectItem>
-                    <SelectItem value="Europe/London">London (GMT)</SelectItem>
-                    <SelectItem value="America/New_York">New York (EST)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button variant="hero" onClick={handleSavePreferences}>
-                Opslaan
-              </Button>
             </div>
           </div>
         </TabsContent>
+
+        {/* Organization Tab - Only for managers and admins */}
+        {(user?.role === "manager" || user?.role === "admin") && (
+          <TabsContent value="organization" className="space-y-6">
+            <div className="glass rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Building className="w-5 h-5 text-primary" />
+                <h2 className="font-display font-semibold text-foreground">Organisatie-instellingen</h2>
+              </div>
+              {loadingOrgSettings ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Instellingen laden...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5 flex-1">
+                      <Label className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Monteurs kunnen documenten bekijken
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Sta monteurs toe om documenten te bekijken en te downloaden. Ze kunnen geen documenten uploaden of verwijderen.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={organizationSettings.techniciansCanViewDocuments}
+                      onCheckedChange={async (checked) => {
+                        // Save immediately when toggled
+                        if (!user?.organization_id) {
+                          toast({
+                            title: "Fout",
+                            description: "Geen organisatie gevonden.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+
+                        // Optimistically update UI
+                        const previousValue = organizationSettings.techniciansCanViewDocuments;
+                        setOrganizationSettings({
+                          ...organizationSettings,
+                          techniciansCanViewDocuments: checked,
+                        });
+
+                        try {
+                          const { error } = await supabase
+                            .from("organizations")
+                            .update({
+                              technicians_can_view_documents: checked,
+                            })
+                            .eq("id", user.organization_id);
+
+                          if (error) throw error;
+
+                          toast({
+                            title: "Instelling opgeslagen",
+                            description: "De instelling is succesvol bijgewerkt.",
+                          });
+                        } catch (error: any) {
+                          console.error("Error saving organization settings:", error);
+                          // Revert on error
+                          setOrganizationSettings({
+                            ...organizationSettings,
+                            techniciansCanViewDocuments: previousValue,
+                          });
+                          toast({
+                            title: "Fout",
+                            description: error.message || "Kon instelling niet opslaan.",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

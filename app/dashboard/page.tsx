@@ -59,7 +59,23 @@ export default function DashboardPage() {
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [techniciansCanViewDocuments, setTechniciansCanViewDocuments] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check for invite hash fragments - if present, redirect to auth to set password
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.substring(1));
+      const type = params.get('type');
+      
+      if (type === 'invite' || type === 'recovery') {
+        // Redirect to auth page with hash fragment to set password
+        router.replace(`/auth${hash}`);
+        return;
+      }
+    }
+  }, [router]);
 
   // Redirect naar login als niet ingelogd
   // Check both user and supabaseUser - if we have supabaseUser but not user yet,
@@ -76,6 +92,33 @@ export default function DashboardPage() {
       loadOrganizations();
     }
   }, [user?.role]);
+
+  // Load organization settings to check if technicians can view documents
+  useEffect(() => {
+    if (user?.organization_id) {
+      loadOrganizationSettings();
+    }
+  }, [user?.organization_id]);
+
+  const loadOrganizationSettings = async () => {
+    if (!user?.organization_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("technicians_can_view_documents")
+        .eq("id", user.organization_id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setTechniciansCanViewDocuments(data.technicians_can_view_documents || false);
+      }
+    } catch (error) {
+      console.error("Error loading organization settings:", error);
+    }
+  };
 
   const loadOrganizations = async () => {
     try {
@@ -455,7 +498,12 @@ export default function DashboardPage() {
 
   const menuItems = [
     { id: "chat", icon: MessageSquare, label: "Chat", roles: ["admin", "manager", "technician"] },
-    { id: "documents", icon: FileText, label: "Documenten", roles: ["admin", "manager"] },
+    { 
+      id: "documents", 
+      icon: FileText, 
+      label: "Documenten", 
+      roles: ["admin", "manager", ...(techniciansCanViewDocuments ? ["technician"] : [])] 
+    },
     { id: "users", icon: Users, label: "Gebruikers", roles: ["admin", "manager"] },
     { id: "organizations", icon: Building, label: "Organisaties", roles: ["admin"] },
     { id: "analytics", icon: BarChart, label: "Analytics", roles: ["admin", "manager"] },

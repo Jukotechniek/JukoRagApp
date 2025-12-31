@@ -120,6 +120,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [techniciansCanViewDocuments, setTechniciansCanViewDocuments] = useState(false);
   
   // Progress tracking - track by filename for uploads, by doc ID for RAG
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
@@ -128,6 +129,37 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
   // Use selected organization ID or fall back to user's organization
   const effectiveOrgId = selectedOrganizationId || user?.organization_id || null;
+
+  // Check if user can edit (not a technician, or technician with permission)
+  const canEdit = user?.role !== "technician" || techniciansCanViewDocuments;
+  const isReadOnly = user?.role === "technician" && techniciansCanViewDocuments;
+
+  // Load organization settings
+  useEffect(() => {
+    if (effectiveOrgId && user?.role === "technician") {
+      loadOrganizationSettings();
+    }
+  }, [effectiveOrgId, user?.role]);
+
+  const loadOrganizationSettings = async () => {
+    if (!effectiveOrgId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("technicians_can_view_documents")
+        .eq("id", effectiveOrgId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setTechniciansCanViewDocuments(data.technicians_can_view_documents || false);
+      }
+    } catch (error) {
+      console.error("Error loading organization settings:", error);
+    }
+  };
 
   // Load documents
   useEffect(() => {
@@ -199,6 +231,16 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
   const handleFileSelect = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0 || !effectiveOrgId || !user) return;
+
+    // Check if user can edit - technicians can never upload, only view
+    if (user.role === "technician") {
+      toast({
+        title: "Geen toegang",
+        description: "Monteurs kunnen geen documenten uploaden. Neem contact op met uw manager.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     for (const file of Array.from(files)) {
       // Validate file is not empty
@@ -427,12 +469,20 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   };
 
   const handleDelete = (doc: Document) => {
+    if (!canEdit) {
+      toast({
+        title: "Geen toegang",
+        description: "U heeft geen toestemming om documenten te verwijderen.",
+        variant: "destructive",
+      });
+      return;
+    }
     setDocumentToDelete(doc);
     setDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!documentToDelete || !effectiveOrgId) return;
+    if (!documentToDelete || !effectiveOrgId || !canEdit) return;
 
     try {
       // 1) Verwijder alle gekoppelde embeddings (document_sections)
@@ -539,6 +589,15 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   };
 
   const handleToggleRAG = async (doc: Document, newValue: boolean) => {
+    if (!canEdit) {
+      toast({
+        title: "Geen toegang",
+        description: "U heeft geen toestemming om RAG instellingen te wijzigen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from("documents")
@@ -637,12 +696,15 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           </h1>
           <p className="text-muted-foreground">
             {documents.length} documenten in jouw organisatie
+            {isReadOnly && " (Alleen bekijken)"}
           </p>
         </div>
-        <Button variant="hero" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="w-4 h-4 mr-2" />
-          Document Uploaden
-        </Button>
+        {canEdit && (
+          <Button variant="hero" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 mr-2" />
+            Document Uploaden
+          </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -656,16 +718,17 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         />
       </div>
 
-      {/* Upload Area */}
-      <div
-        className={`glass rounded-2xl p-8 mb-6 border-dashed border-2 transition-colors cursor-pointer ${
-          isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
+      {/* Upload Area - Only show if user can edit */}
+      {canEdit && (
+        <div
+          className={`glass rounded-2xl p-8 mb-6 border-dashed border-2 transition-colors cursor-pointer ${
+            isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
         <input
           ref={fileInputRef}
           type="file"
@@ -688,7 +751,8 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf) • Max. 20MB
           </p>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Documents List */}
       <div className="space-y-3">
@@ -775,17 +839,19 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                     </div>
                   )}
                   
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={`rag-${doc.id}`} className="text-sm text-muted-foreground cursor-pointer">
-                      RAG
-                    </Label>
-                    <Switch
-                      id={`rag-${doc.id}`}
-                      checked={doc.use_for_rag}
-                      onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
-                      disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
-                    />
-                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`rag-${doc.id}`} className="text-sm text-muted-foreground cursor-pointer">
+                        RAG
+                      </Label>
+                      <Switch
+                        id={`rag-${doc.id}`}
+                        checked={doc.use_for_rag}
+                        onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
+                        disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <DropdownMenu>
@@ -799,13 +865,15 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                       <Download className="w-4 h-4 mr-2" />
                       Downloaden
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(doc)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Verwijderen
-                    </DropdownMenuItem>
+                    {canEdit && (
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(doc)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Verwijderen
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

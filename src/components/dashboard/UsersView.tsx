@@ -200,10 +200,18 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         throw new Error(data.error || 'Failed to create user');
       }
 
-      toast({
-        title: "Gebruiker toegevoegd",
-        description: `${newUser.name} is toegevoegd aan het team. Ze ontvangen een email om hun wachtwoord in te stellen.`,
-      });
+      // Show different message based on whether invite was sent
+      if (data.inviteSent) {
+        toast({
+          title: "Gebruiker toegevoegd",
+          description: `${newUser.name} is toegevoegd aan het team. Een invite email is verzonden naar ${newUser.email}.`,
+        });
+      } else {
+        toast({
+          title: "Gebruiker toegevoegd",
+          description: `${newUser.name} is toegevoegd aan het team. Deze gebruiker bestaat al in het systeem.`,
+        });
+      }
 
       setAddUserDialogOpen(false);
       setNewUser({ name: "", email: "", role: "technician" });

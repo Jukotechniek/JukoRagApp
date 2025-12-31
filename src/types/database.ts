@@ -17,6 +17,7 @@ export type Database = {
           id: string;
           name: string;
           plan: "starter" | "professional" | "enterprise";
+          technicians_can_view_documents: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -24,6 +25,7 @@ export type Database = {
           id?: string;
           name: string;
           plan?: "starter" | "professional" | "enterprise";
+          technicians_can_view_documents?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -31,6 +33,7 @@ export type Database = {
           id?: string;
           name?: string;
           plan?: "starter" | "professional" | "enterprise";
+          technicians_can_view_documents?: boolean;
           created_at?: string;
           updated_at?: string;
         };

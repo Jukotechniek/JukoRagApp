@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Bot, ArrowLeft, Mail, Lock, User, Building } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export default function AuthPage() {
   const searchParams = useSearchParams();
@@ -16,6 +17,8 @@ export default function AuthPage() {
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -26,14 +29,74 @@ export default function AuthPage() {
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "register");
-  }, [searchParams]);
+    
+    // Check for invite/password reset hash fragments
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.substring(1));
+        const type = params.get('type');
+        const accessToken = params.get('access_token');
+        const error = params.get('error');
+        
+        if (error) {
+          // Handle errors from hash
+          if (error === 'access_denied' || error === 'otp_expired') {
+            toast({
+              title: "Link verlopen",
+              description: "De invite link is verlopen of ongeldig. Vraag een nieuwe invite aan.",
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+        
+        if (type === 'invite' || type === 'recovery') {
+          // User is setting password via invite or password reset
+          setIsSettingPassword(true);
+          
+          // Get email from session if available
+          if (accessToken) {
+            supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: params.get('refresh_token') || '',
+            }).then(({ data, error }) => {
+              if (data?.user?.email) {
+                setInviteEmail(data.user.email);
+                setFormData(prev => ({ ...prev, email: data.user.email || '' }));
+              }
+            });
+          }
+        }
+      }
+    };
+    
+    // Check hash on mount - use setTimeout to ensure hash is available
+    const checkHash = () => {
+      handleHashChange();
+    };
+    
+    // Check immediately
+    checkHash();
+    
+    // Also check after a short delay in case hash loads after component
+    const timeoutId = setTimeout(checkHash, 100);
+    
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [searchParams, toast]);
 
   const { login, register, user, isAuthenticated, loading, supabaseUser } = useAuth();
 
-  // Redirect when authenticated - redirect as soon as we have supabaseUser (auth successful)
+  // Redirect when authenticated - but NOT if user is setting password
   // Don't wait for full user data load to prevent hanging
   useEffect(() => {
-    if (supabaseUser && !isLoading) {
+    if (supabaseUser && !isLoading && !isSettingPassword) {
       // Small delay to ensure state is settled, then redirect
       const redirectTimer = setTimeout(() => {
         toast({
@@ -45,7 +108,53 @@ export default function AuthPage() {
       
       return () => clearTimeout(redirectTimer);
     }
-  }, [supabaseUser, isLoading, router, toast]);
+  }, [supabaseUser, isLoading, isSettingPassword, router, toast]);
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      // Update password for invited user
+      const { error } = await supabase.auth.updateUser({
+        password: formData.password,
+      });
+
+      if (error) {
+        toast({
+          title: "Fout",
+          description: error.message || "Kon wachtwoord niet instellen.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Wachtwoord ingesteld",
+        description: "Uw wachtwoord is succesvol ingesteld. U wordt doorgestuurd...",
+      });
+
+      // Reset setting password state
+      setIsSettingPassword(false);
+      
+      // Clear hash from URL
+      window.history.replaceState(null, '', '/auth');
+      
+      // Redirect to dashboard after short delay
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 1000);
+    } catch (error: any) {
+      console.error("Error setting password:", error);
+      toast({
+        title: "Er is een fout opgetreden",
+        description: "Probeer het opnieuw of ververs de pagina.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +166,12 @@ export default function AuthPage() {
     }, 10000);
 
     try {
+      if (isSettingPassword) {
+        await handleSetPassword(e);
+        clearTimeout(safetyTimeout);
+        return;
+      }
+
       if (isLogin) {
         // Login logica
         const success = await login(formData.email, formData.password);
@@ -152,10 +267,16 @@ export default function AuthPage() {
           {/* Header */}
           <div className="mb-8">
             <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-              {isLogin ? "Welkom terug" : "Start uw trial"}
+              {isSettingPassword 
+                ? "Wachtwoord instellen" 
+                : isLogin 
+                ? "Welkom terug" 
+                : "Start uw trial"}
             </h1>
             <p className="text-muted-foreground">
-              {isLogin
+              {isSettingPassword
+                ? "Stel uw wachtwoord in om uw account te activeren"
+                : isLogin
                 ? "Log in om verder te gaan naar uw dashboard"
                 : "Maak een gratis account aan en probeer TechRAG 14 dagen"}
             </p>
@@ -163,7 +284,23 @@ export default function AuthPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+            {isSettingPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    value={formData.email}
+                    disabled
+                    className="pl-10 bg-muted"
+                  />
+                </div>
+              </div>
+            )}
+            
+            {!isLogin && !isSettingPassword && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="name">Volledige naam</Label>
@@ -199,24 +336,28 @@ export default function AuthPage() {
               </>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="u@voorbeeld.nl"
-                  className="pl-10"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                />
+            {!isSettingPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="u@voorbeeld.nl"
+                    className="pl-10"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Wachtwoord</Label>
+              <Label htmlFor="password">
+                {isSettingPassword ? "Nieuw wachtwoord" : "Wachtwoord"}
+              </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -239,20 +380,28 @@ export default function AuthPage() {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? "Even geduld..." : isLogin ? "Inloggen" : "Account Aanmaken"}
+              {isLoading 
+                ? "Even geduld..." 
+                : isSettingPassword 
+                ? "Wachtwoord instellen" 
+                : isLogin 
+                ? "Inloggen" 
+                : "Account Aanmaken"}
             </Button>
           </form>
 
-          {/* Toggle */}
-          <p className="text-center text-muted-foreground mt-6">
-            {isLogin ? "Nog geen account? " : "Al een account? "}
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:underline font-medium"
-            >
-              {isLogin ? "Registreer hier" : "Log hier in"}
-            </button>
-          </p>
+          {/* Toggle - only show if not setting password */}
+          {!isSettingPassword && (
+            <p className="text-center text-muted-foreground mt-6">
+              {isLogin ? "Nog geen account? " : "Al een account? "}
+              <button
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-primary hover:underline font-medium"
+              >
+                {isLogin ? "Registreer hier" : "Log hier in"}
+              </button>
+            </p>
+          )}
 
         </div>
       </div>
