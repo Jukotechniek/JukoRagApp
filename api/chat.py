@@ -1379,9 +1379,19 @@ async def process_document(
             
             # Page-based chunking: split each page separately to preserve page context
             # This is critical for technical schemas where mixing pages breaks connections
+            # For Excel/CSV files, use smaller chunks to avoid token limit issues
+            # Excel rows can be very large with many columns
+            is_excel_or_csv = file_type in ['text/csv', 'application/vnd.ms-excel', 
+                                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or \
+                            file_name.lower().endswith(('.csv', '.xls', '.xlsx'))
+            
+            # Use smaller chunk size for Excel/CSV to prevent large chunks
+            chunk_size = 800 if is_excel_or_csv else 1500
+            chunk_overlap = 100 if is_excel_or_csv else 200
+            
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1500,
-                chunk_overlap=200
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
             )
             
             # Add document metadata to each document before splitting
@@ -1393,8 +1403,30 @@ async def process_document(
             # This preserves the context of each page, which is critical for technical schemas
             chunks = []
             for doc_obj in langchain_docs:
-                # Split this page's content into chunks
-                page_chunks = text_splitter.split_documents([doc_obj])
+                # For Excel/CSV: ensure content is split even if single row is large
+                # Check if content is too large and force splitting
+                content_length = len(doc_obj.page_content)
+                if is_excel_or_csv and content_length > chunk_size * 2:
+                    # Content is very large, split it multiple times if needed
+                    # First split normally
+                    page_chunks = text_splitter.split_documents([doc_obj])
+                    # Then check each chunk and split further if still too large
+                    final_chunks = []
+                    for chunk in page_chunks:
+                        if len(chunk.page_content) > chunk_size * 1.5:
+                            # Split this chunk again with smaller size
+                            smaller_splitter = RecursiveCharacterTextSplitter(
+                                chunk_size=chunk_size,
+                                chunk_overlap=chunk_overlap
+                            )
+                            sub_chunks = smaller_splitter.split_documents([chunk])
+                            final_chunks.extend(sub_chunks)
+                        else:
+                            final_chunks.append(chunk)
+                    page_chunks = final_chunks
+                else:
+                    # Normal splitting for PDFs and other files
+                    page_chunks = text_splitter.split_documents([doc_obj])
                 
                 # Add footer info to each chunk's metadata (enrich metadata per page)
                 for chunk in page_chunks:
@@ -1422,28 +1454,92 @@ async def process_document(
             texts = [chunk.page_content for chunk in chunks]
             
             # Calculate batch size: OpenAI has 300k token limit per request
-            # With ~1500 chars per chunk and ~4 chars per token, that's ~375 tokens per chunk
-            # To be safe, use batches of 500 chunks (well under 300k tokens)
-            batch_size = 500
-            embeddings_list = []
+            # Estimate tokens: ~4 characters per token (conservative estimate)
+            # Use smaller batches to be safe, especially for large chunks
+            # Start with 100 chunks per batch, but dynamically adjust if needed
+            max_tokens_per_request = 300000
+            estimated_chars_per_token = 4
+            safe_margin = 0.7  # Use 70% of limit to be safe
+            max_chars_per_batch = int(max_tokens_per_request * estimated_chars_per_token * safe_margin)
             
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                batch_num = (i // batch_size) + 1
-                total_batches = (len(texts) + batch_size - 1) // batch_size
+            embeddings_list = []
+            current_batch = []
+            current_batch_chars = 0
+            batch_num = 1
+            total_chars = sum(len(text) for text in texts)
+            total_batches_estimate = max(1, total_chars // max_chars_per_batch)
+            
+            for idx, text in enumerate(texts):
+                text_length = len(text)
                 
-                print(f"Generating embeddings for batch {batch_num}/{total_batches} ({len(batch_texts)} chunks)...")
+                # If adding this text would exceed the limit, process current batch first
+                if current_batch and (current_batch_chars + text_length) > max_chars_per_batch:
+                    print(f"Generating embeddings for batch {batch_num}/{total_batches_estimate} ({len(current_batch)} chunks, ~{current_batch_chars:,} chars)...")
+                    
+                    try:
+                        batch_embeddings = embeddings.embed_documents(current_batch)
+                        embeddings_list.extend(batch_embeddings)
+                    except Exception as e:
+                        error_msg = str(e)
+                        print(f"Error generating embeddings for batch {batch_num}: {error_msg}")
+                        # If batch is too large, try with smaller chunks
+                        if "max_tokens" in error_msg.lower() or "300000" in error_msg:
+                            print(f"Batch too large, splitting into smaller batches...")
+                            # Process in even smaller batches (50 chunks max)
+                            smaller_batch_size = 50
+                            for j in range(0, len(current_batch), smaller_batch_size):
+                                smaller_batch = current_batch[j:j + smaller_batch_size]
+                                try:
+                                    smaller_embeddings = embeddings.embed_documents(smaller_batch)
+                                    embeddings_list.extend(smaller_embeddings)
+                                except Exception as e2:
+                                    raise HTTPException(
+                                        status_code=500,
+                                        detail=f"Failed to generate embeddings for batch {batch_num} (smaller batch): {str(e2)}"
+                                    )
+                        else:
+                            raise HTTPException(
+                                status_code=500,
+                                detail=f"Failed to generate embeddings for batch {batch_num}: {error_msg}"
+                            )
+                    
+                    # Reset for next batch
+                    current_batch = []
+                    current_batch_chars = 0
+                    batch_num += 1
                 
+                # Add text to current batch
+                current_batch.append(text)
+                current_batch_chars += text_length
+            
+            # Process remaining batch
+            if current_batch:
+                print(f"Generating embeddings for batch {batch_num}/{total_batches_estimate} ({len(current_batch)} chunks, ~{current_batch_chars:,} chars)...")
                 try:
-                    batch_embeddings = embeddings.embed_documents(batch_texts)
+                    batch_embeddings = embeddings.embed_documents(current_batch)
                     embeddings_list.extend(batch_embeddings)
                 except Exception as e:
                     error_msg = str(e)
                     print(f"Error generating embeddings for batch {batch_num}: {error_msg}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to generate embeddings for batch {batch_num}: {error_msg}"
-                    )
+                    # If batch is too large, try with smaller chunks
+                    if "max_tokens" in error_msg.lower() or "300000" in error_msg:
+                        print(f"Batch too large, splitting into smaller batches...")
+                        smaller_batch_size = 50
+                        for j in range(0, len(current_batch), smaller_batch_size):
+                            smaller_batch = current_batch[j:j + smaller_batch_size]
+                            try:
+                                smaller_embeddings = embeddings.embed_documents(smaller_batch)
+                                embeddings_list.extend(smaller_embeddings)
+                            except Exception as e2:
+                                raise HTTPException(
+                                    status_code=500,
+                                    detail=f"Failed to generate embeddings for batch {batch_num} (smaller batch): {str(e2)}"
+                                )
+                    else:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to generate embeddings for batch {batch_num}: {error_msg}"
+                        )
             
             print(f"Successfully generated {len(embeddings_list)} embeddings")
             
