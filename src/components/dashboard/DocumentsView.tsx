@@ -162,43 +162,52 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         continue;
       }
 
-      // Validate file type
+      // Validate file type - only allow: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf)
+      // Note: .doc files (old Word format) are not supported - users must convert to .docx
       const validTypes = [
         "text/plain", // .txt files
-        "text/markdown", // .md files
-        "text/csv", // .csv files
-        "application/json", // .json files
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+        "application/vnd.ms-excel", // .xls files
       ];
       
       // Also check file extension as fallback (some browsers don't set MIME type correctly)
       const fileExt = file.name.split(".").pop()?.toLowerCase();
-      const validExtensions = ["txt", "md", "csv", "json", "pdf", "docx", "xlsx"];
+      const validExtensions = ["txt", "pdf", "docx", "xls", "xlsx"];
+      
+      // Check for .doc files and provide helpful error message
+      if (fileExt === "doc" || file.type === "application/msword") {
+        toast({
+          title: ".doc bestanden niet ondersteund",
+          description: `${file.name} is een oud Word-formaat (.doc). Converteer het bestand naar .docx formaat en upload het opnieuw. Open het bestand in Microsoft Word en sla het op als .docx.`,
+          variant: "destructive",
+        });
+        continue;
+      }
       
       if (!validTypes.includes(file.type) && !validExtensions.includes(fileExt || "")) {
         toast({
           title: "Ongeldig bestandstype",
-          description: `${file.name} heeft een ongeldig type. Toegestaan: TXT, MD, CSV, JSON, PDF, DOCX, XLSX.`,
+          description: `${file.name} heeft een ongeldig type. Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf).`,
           variant: "destructive",
         });
         continue;
       }
 
-      // Validate file size (50MB max)
-      if (file.size > 50 * 1024 * 1024) {
+      // Validate file size (20MB max)
+      if (file.size > 20 * 1024 * 1024) {
         toast({
           title: "Bestand te groot",
-          description: `${file.name} is te groot. Maximum grootte is 50MB.`,
+          description: `${file.name} is te groot. Maximum grootte is 20MB.`,
           variant: "destructive",
         });
         continue;
       }
 
       // For text-based files, check if they have meaningful content (not just whitespace)
-      const textBasedTypes = ["text/plain", "text/markdown", "text/csv", "application/json"];
-      const textBasedExtensions = ["txt", "md", "csv", "json"];
+      const textBasedTypes = ["text/plain"];
+      const textBasedExtensions = ["txt"];
       
       if (textBasedTypes.includes(file.type) || textBasedExtensions.includes(fileExt || "")) {
         try {
@@ -335,11 +344,25 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
       // Delete from storage if URL exists
       if (documentToDelete.file_url) {
-        const fileName = documentToDelete.file_url.split("/").pop();
-        if (fileName) {
-          await supabase.storage
-            .from("documents")
-            .remove([`${effectiveOrgId}/${fileName}`]);
+        try {
+          // Extract storage path from URL
+          // URL format: https://xxx.supabase.co/storage/v1/object/documents/org-id/timestamp-random.ext
+          const urlMatch = documentToDelete.file_url.match(/\/documents\/(.+)$/);
+          if (urlMatch && urlMatch[1]) {
+            // Decode URL-encoded path
+            const storagePath = decodeURIComponent(urlMatch[1]);
+            const { error: storageError } = await supabase.storage
+              .from("documents")
+              .remove([storagePath]);
+            
+            if (storageError) {
+              console.error("Error deleting file from storage:", storageError);
+              // Don't throw - we've already deleted from DB, just log the error
+            }
+          }
+        } catch (error) {
+          console.error("Error extracting storage path from URL:", error);
+          // Don't throw - we've already deleted from DB, just log the error
         }
       }
 
@@ -510,7 +533,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx"
+          accept=".txt,.pdf,.docx,.xls,.xlsx"
           className="hidden"
           onChange={(e) => handleFileSelect(e.target.files)}
         />
@@ -525,7 +548,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             of klik om te bladeren
           </p>
           <p className="text-xs text-muted-foreground">
-            Verwerkbaar: PDF, XLSX, TXT, MD, CSV, JSON • Ook toegestaan: DOCX (max. 50MB)
+            Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf) • Max. 20MB
           </p>
         </div>
       </div>

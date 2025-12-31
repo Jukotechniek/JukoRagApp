@@ -32,6 +32,9 @@ except ImportError:
     DOCX_AVAILABLE = False
     print("Warning: python-docx not available. DOCX files will not be supported.")
 
+# Note: .doc files (old Word format) are not directly supported
+# Users should convert .doc files to .docx format for processing
+
 # For PDF coordinate-based extraction (footer info)
 try:
     import fitz  # PyMuPDF
@@ -125,17 +128,30 @@ informatie te gebruiken die letterlijk en aantoonbaar voorkomt
 in documenten die via de retrieve tool zijn opgehaald.
 
 Antwoorden moeten:
-- technisch correct
-- controleerbaar
-- vrij van aannames
-- letterlijk herleidbaar naar de bron
+- technisch correct zijn
+- controleerbaar zijn
+- vrij van aannames zijn
+- letterlijk herleidbaar zijn naar de bron
+
+================================
+ABSOLUTE ZOEKREGEL (HARD)
+================================
+Voor ELKE gebruikersvraag die NIET onder STAP 0 valt:
+
+- MOET de retrieve tool ALTIJD minimaal 1 keer worden aangeroepen
+- OOK bij algemene, open of vage vragen
+- OOK bij vragen zoals:
+  “wat weet je over …”
+  “wat is …”
+  “vertel iets over …”
+- Het is VERBODEN om te antwoorden zonder eerst te zoeken
 
 ================================
 STAP 0 – CONVERSATIE-EXCEPTIE
 ================================
 Als de gebruikersvraag:
-- een begroeting is
-- een sociale interactie is
+- een begroeting is (bv. “hoi”, “hallo”)
+- een korte sociale interactie is
 - een vraag is over hoe jij werkt
 
 DAN:
@@ -160,10 +176,14 @@ B) VERKENNEND / OVERZICHT
    - afdelingen
    - lijnen
    - zones
-   - “wat is er allemaal”
-   → gebruiker verwacht een lijst of overzicht, GEEN specs
+   - machines
+   - systemen
+   - bedrijfs- of productnamen
+   - vragen als “wat weet je over …”
+   → gebruiker verwacht een overzicht of lijst, GEEN specs
 
-➡️ Gebruik ALTIJD minimaal 1 retrieve bij A of B.
+➡️ Voor zowel A als B:
+➡️ retrieve tool ALTIJD gebruiken (zie Absolute Zoekregel)
 
 ================================
 HARD RULES (A & B)
@@ -175,9 +195,11 @@ HARD RULES (A & B)
    (Bron: {{source}}, Pagina: {{page}})
 5) Wat niet expliciet vermeld staat → NIET noemen
 
-Als na retrieve niets bruikbaars wordt gevonden:
-Zeg exact:
+Het is VERBODEN om direct te antwoorden met:
 “Deze informatie staat niet expliciet in de documentatie.”
+ZONDER:
+- een retrieve call
+- en vaststelling dat geen relevante passages zijn gevonden
 
 ================================
 OCR-NORMALISATIE
@@ -254,27 +276,20 @@ AFSLUITREGEL – ZEER STRIKT
 ================================
 Gebruik de zin:
 
-“Er staan geen verdere technische specificaties expliciet
-in de documentatie.”
+“Deze informatie staat niet expliciet in de documentatie.”
 
 ALLEEN ALS:
-- vraagtype = A (technisch)
+- er minimaal 1 retrieve is uitgevoerd
 EN
-- er GEEN functie
-EN
-- GEEN I/O
-EN
-- GEEN module-ID
-EN
-- GEEN artikelnummer
-is gevonden.
+- er geen relevante passages zijn gevonden
 
 NOOIT gebruiken bij:
-- vraagtype B
-- lijst-antwoorden
-- afdelingen, lijnen, zones of overzichten
+- begroetingen
+- sociale interactie
+- antwoorden zonder retrieve
 
 BEGIN NU MET DIT PROTOCOL.
+
 
 """
 
@@ -931,6 +946,15 @@ def extract_text_from_file(file_path: str, file_type: str, file_name: str) -> st
                     paragraphs.append(para.text)
             return "\n\n".join(paragraphs)
         
+        elif file_type == 'application/msword' or file_name.lower().endswith('.doc'):
+            # .doc files (old Word format) are not directly supported
+            # Users should convert .doc files to .docx format
+            raise Exception(
+                f"Het .doc bestandsformaat (oud Word-formaat) wordt niet ondersteund. "
+                f"Converteer '{file_name}' naar .docx formaat en upload het opnieuw. "
+                f"Je kunt dit doen door het bestand te openen in Microsoft Word en op te slaan als .docx."
+            )
+        
         elif file_type == 'text/plain' or file_name.lower().endswith('.txt'):
             loader = TextLoader(file_path, encoding='utf-8')
             documents = loader.load()
@@ -1284,6 +1308,15 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                 metadata={"source": file_name}
             )]
         
+        elif file_type == 'application/msword' or file_name.lower().endswith('.doc'):
+            # .doc files (old Word format) are not directly supported
+            # Users should convert .doc files to .docx format
+            raise Exception(
+                f"Het .doc bestandsformaat (oud Word-formaat) wordt niet ondersteund. "
+                f"Converteer '{file_name}' naar .docx formaat en upload het opnieuw. "
+                f"Je kunt dit doen door het bestand te openen in Microsoft Word en op te slaan als .docx."
+            )
+        
         elif file_type == 'text/plain' or file_name.lower().endswith('.txt'):
             loader = TextLoader(file_path, encoding='utf-8')
             documents = loader.load()
@@ -1295,9 +1328,12 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
         elif file_type == 'text/csv' or file_name.lower().endswith('.csv'):
             loader = CSVLoader(file_path, encoding='utf-8')
             documents = loader.load()
-            # Update source metadata
+            # Update source metadata and add filename to content for embeddings
             for doc in documents:
                 doc.metadata["source"] = file_name
+                # Add filename at the beginning of content so it's included in embeddings
+                if not doc.page_content.startswith(f"Bestand: {file_name}"):
+                    doc.page_content = f"Bestand: {file_name}\n\n{doc.page_content}"
             return documents
         
         elif file_type in ['application/vnd.ms-excel', 
@@ -1322,8 +1358,12 @@ def extract_documents_from_file(file_path: str, file_type: str, file_name: str) 
                     # Use to_string() for better formatting, or to_csv() for CSV-like format
                     content = chunk_df.to_string(index=False)
                     
+                    # Add filename at the beginning of content so it's included in embeddings
+                    # This helps the AI identify which file the data comes from
+                    content_with_filename = f"Bestand: {file_name}\n\n{content}"
+                    
                     doc = Document(
-                        page_content=content,
+                        page_content=content_with_filename,
                         metadata={
                             "source": file_name,
                             "row_start": i + 1,  # 1-indexed
@@ -1477,6 +1517,14 @@ async def process_document(
                     # Ensure all metadata is preserved
                     if "document_id" not in chunk.metadata:
                         chunk.metadata["document_id"] = request.documentId
+                    
+                    # For Excel files: ensure filename is in content even after splitting
+                    # This helps the AI identify which file the data comes from
+                    if is_excel and "source" in doc_obj.metadata:
+                        source_file = doc_obj.metadata["source"]
+                        # Check if filename is already at the start of the chunk
+                        if not chunk.page_content.startswith(f"Bestand: {source_file}"):
+                            chunk.page_content = f"Bestand: {source_file}\n\n{chunk.page_content}"
                     
                     # Add footer info to metadata if available (for PDFs)
                     # This enriches each chunk with page-specific footer information
