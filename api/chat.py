@@ -330,8 +330,8 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             {
                 "p_organization_id": organization_id,
                 "p_query_embedding": query_embedding,
-                "p_match_count": 10,
-                "p_threshold": 0.30
+                "p_match_count": 6, #stond op 10   
+                "p_threshold": 0.35 #stond op 0.30
             }
         ).execute()
         
