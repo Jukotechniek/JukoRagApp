@@ -131,9 +131,11 @@ export default function DashboardPage() {
 
       if (data && data.length > 0) {
         const orgs = data as { id: string; name: string }[];
+        console.log("Organizations loaded:", orgs);
         setOrganizations(orgs);
         // Set first organization as default if none selected
         if (!adminSelectedOrgId && orgs[0]) {
+          console.log("Setting default organization to:", orgs[0].id, orgs[0].name);
           setAdminSelectedOrgId(orgs[0].id);
         }
       }
@@ -143,7 +145,7 @@ export default function DashboardPage() {
   };
 
   // Get effective organization ID (selected org for admin, user's org for others)
-  const effectiveOrgId = user?.role === "admin" ? adminSelectedOrgId : user?.organization_id || null;
+  const effectiveOrgId = user?.role === "admin" ? (adminSelectedOrgId || null) : (user?.organization_id || null);
 
   const isValidUuid = (value: string | null) => {
     if (!value) return false;
@@ -614,7 +616,13 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <Building className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Bekijk als:</span>
-              <Select value={adminSelectedOrgId || ""} onValueChange={setAdminSelectedOrgId}>
+              <Select 
+                value={adminSelectedOrgId || ""} 
+                onValueChange={(value) => {
+                  console.log("Admin selected organization:", value);
+                  setAdminSelectedOrgId(value);
+                }}
+              >
                 <SelectTrigger className="w-[250px]">
                   <SelectValue placeholder="Selecteer organisatie" />
                 </SelectTrigger>
