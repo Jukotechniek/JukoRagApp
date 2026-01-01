@@ -22,7 +22,7 @@ def normalize_spaced_text(text: str) -> str:
         if not line:
             continue
 
-        # 1) collapse S t a r t / 8 8 4 1 Q 2 / 0 V D C
+        # 1) collapse S t a r t / 8 2 9 3 Q 2 / 0 V D C
         line = collapse_spaced_sequences(line)
 
         # 2) join "A 1" -> "A1", "A 2" -> "A2"

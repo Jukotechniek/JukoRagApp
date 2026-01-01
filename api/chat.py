@@ -163,19 +163,50 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             
             if org_doc_ids:
                 # Extract meaningful keywords from query (remove common words)
-                # Split query into words and search for each significant term
-                query_words = re.findall(r'\b\w{3,}\b', query.lower())  # Words with 3+ characters
+                # First, extract component codes and technical identifiers (these are important even if short)
+                # Patterns: "8293Q2", "Q302.0", "2RSP02", "-8293U2", etc.
+                component_codes = re.findall(r'\b-?\d+[A-Za-z]+\d*[A-Za-z]*\b|\b[A-Za-z]+\d+[A-Za-z]?\d*\.?\d*\b|\b\d+[A-Za-z]\d+\b', query, re.IGNORECASE)
+                
+                # Split query into words and search for each significant term (3+ characters)
+                query_words = re.findall(r'\b\w{3,}\b', query.lower())
                 # Remove common stopwords
                 stopwords = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'she', 'use', 'her', 'many', 'than', 'them', 'these', 'so', 'some', 'would', 'make', 'like', 'into', 'time', 'has', 'look', 'two', 'more', 'write', 'go', 'see', 'number', 'no', 'way', 'could', 'people', 'my', 'than', 'first', 'water', 'been', 'call', 'who', 'oil', 'sit', 'now', 'find', 'down', 'day', 'did', 'get', 'come', 'made', 'may', 'part'}
                 keywords = [w for w in query_words if w not in stopwords]
                 
+                # Combine component codes and regular keywords
+                # Component codes should be searched with original case/punctuation
+                all_keywords = []
+                seen_codes = set()  # Avoid duplicates
+                for code in component_codes:
+                    # Add the code as-is (preserving case and punctuation)
+                    code_lower = code.lower()
+                    if code not in seen_codes:
+                        all_keywords.append(code)
+                        seen_codes.add(code)
+                    # Also add without leading dash for better matching (if code has dash)
+                    if code.startswith('-') and code[1:] not in seen_codes:
+                        all_keywords.append(code[1:])
+                        seen_codes.add(code[1:])
+                    # Also add WITH leading dash if code doesn't have dash (to find "-8293Q2" when searching "8293Q2")
+                    elif not code.startswith('-') and f"-{code}" not in seen_codes:
+                        all_keywords.append(f"-{code}")
+                        seen_codes.add(f"-{code}")
+                    # Also add lowercase version for case-insensitive matching
+                    if code_lower not in seen_codes and code_lower != code:
+                        all_keywords.append(code_lower)
+                        seen_codes.add(code_lower)
+                # Add regular keywords (lowercase)
+                all_keywords.extend([kw for kw in keywords if kw not in seen_codes])
+                
                 # If we have keywords, search for them
-                if keywords:
+                if all_keywords:
                     # Get document metadata for keyword results
                     doc_metadata_map = {}
                     
-                    # Search for each keyword (limit to first 3 most important keywords)
-                    for keyword in keywords[:3]:
+                    # Search for each keyword (prioritize component codes, then regular keywords)
+                    # Limit to top 5 keywords total to avoid too many queries
+                    search_keywords = all_keywords[:5]
+                    for keyword in search_keywords:
                         result = supabase.table("document_sections").select(
                             "content, metadata, document_id"
                         ).ilike("content", f"%{keyword}%").in_("document_id", org_doc_ids).limit(5).execute()
@@ -217,7 +248,7 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             )
             keyword_span.end()
         
-        # Combine and deduplicate
+        # Combine and deduplicate (using simple approach from old version)
         combine_span = None
         if retrieve_span and langfuse_client and trace_context:
             combine_span = langfuse_client.start_span(
@@ -227,58 +258,22 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
         
         all_docs = []
         seen_content = set()
-        seen_page_content = {}  # Track page + document_id combinations to avoid duplicates
         
-        # Better deduplication: use document_id + page + content hash
-        # This prevents duplicates from same page in same document
+        # Simple deduplication: use first 200 chars as key (like old version)
         for doc in keyword_docs:
-            doc_id = doc.metadata.get('document_id', 'unknown')
-            page = doc.metadata.get('page', doc.metadata.get('page_number_footer', 'unknown'))
-            page_key = f"{doc_id}:{page}"
-            
-            # Create a unique key: document + page + content hash
-            content_key = f"{page_key}:{doc.page_content[:500]}"
-            content_hash = hash(content_key)
-            
-            # Check if we've seen this exact content before
-            if content_hash not in seen_content:
-                # Also check if we've seen this page from this document before
-                # If yes, only add if content is significantly different (>50% different)
-                if page_key in seen_page_content:
-                    existing_content = seen_page_content[page_key]
-                    # Simple similarity check: if first 200 chars are same, skip
-                    if doc.page_content[:200] == existing_content[:200]:
-                        continue  # Skip duplicate from same page
-                
+            content_key = doc.page_content[:200]
+            if content_key not in seen_content:
                 all_docs.append(doc)
-                seen_content.add(content_hash)
-                seen_page_content[page_key] = doc.page_content
+                seen_content.add(content_key)
         
         for doc in semantic_docs:
-            doc_id = doc.metadata.get('document_id', 'unknown')
-            page = doc.metadata.get('page', doc.metadata.get('page_number_footer', 'unknown'))
-            page_key = f"{doc_id}:{page}"
-            
-            # Create a unique key: document + page + content hash
-            content_key = f"{page_key}:{doc.page_content[:500]}"
-            content_hash = hash(content_key)
-            
-            # Check if we've seen this exact content before
-            if content_hash not in seen_content:
-                # Also check if we've seen this page from this document before
-                if page_key in seen_page_content:
-                    existing_content = seen_page_content[page_key]
-                    # Simple similarity check: if first 200 chars are same, skip
-                    if doc.page_content[:200] == existing_content[:200]:
-                        continue  # Skip duplicate from same page
-                
+            content_key = doc.page_content[:200]
+            if content_key not in seen_content:
                 all_docs.append(doc)
-                seen_content.add(content_hash)
-                seen_page_content[page_key] = doc.page_content
+                seen_content.add(content_key)
         
-        # Limit to 5 results, prioritizing semantic results
-        # Sort by similarity if available (semantic docs have similarity score)
-        retrieved_docs = sorted(all_docs, key=lambda x: x.metadata.get('similarity', 0.0), reverse=True)[:5]
+        # Take first 5 (like old version, no sorting by similarity)
+        retrieved_docs = all_docs[:5]
         
         if combine_span:
             combine_span.update(
