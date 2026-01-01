@@ -92,41 +92,81 @@ export async function processDocumentForRAG(
     
     console.log(`Calling Python API for document processing: ${documentId}`);
     
-    const response = await fetch(`${pythonApiUrl}/api/process-document`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        documentId,
-        organizationId,
-      }),
-    });
+    // Create AbortController for timeout (5 minutes max - processing can take time for large files)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 minutes
+    
+    try {
+      const response = await fetch(`${pythonApiUrl}/api/process-document`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          documentId,
+          organizationId,
+        }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { error: errorText };
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        
+        console.error(`Python API returned error status ${response.status}:`, errorData);
+        throw new Error(
+          errorData.detail || 
+          errorData.error || 
+          `Python API returned status ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Python API response for ${documentId}:`, data);
+      
+      if (!data.success) {
+        console.error(`Processing failed for ${documentId}:`, data.error || data.message);
+        throw new Error(data.error || data.message || 'Processing failed');
+      }
+
+      console.log(`Python processing completed successfully for document: ${documentId}, chunks: ${data.chunksProcessed || 'unknown'}`);
+      
+      // Verify that document_sections were actually created
+      // This helps catch cases where the API returns success but sections weren't created
+      const { data: sections, error: verifyError } = await supabase
+        .from('document_sections')
+        .select('id')
+        .eq('document_id', documentId)
+        .limit(1);
+      
+      if (verifyError) {
+        console.warn(`Could not verify document sections for ${documentId}:`, verifyError);
+        // Don't throw - processing might have succeeded, just verification failed
+      } else if (!sections || sections.length === 0) {
+        console.warn(`No document sections found for ${documentId} after processing - this might indicate a problem`);
+        // Don't throw - might be a timing issue, sections might be created async
+      } else {
+        console.log(`Verified ${sections.length} document section(s) exist for ${documentId}`);
       }
       
-      throw new Error(
-        errorData.detail || 
-        errorData.error || 
-        `Python API returned status ${response.status}`
-      );
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      if (fetchError.name === 'AbortError') {
+        console.error(`Request timeout for document processing: ${documentId}`);
+        throw new Error('Document processing timeout. Het bestand is mogelijk te groot. Probeer het later opnieuw of deel het bestand op in kleinere delen.');
+      }
+      
+      throw fetchError;
     }
-
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || data.message || 'Processing failed');
-    }
-
-    console.log(`Python processing completed successfully for document: ${documentId}`);
 
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);

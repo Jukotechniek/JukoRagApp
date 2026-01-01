@@ -178,11 +178,24 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
     }
 
     try {
+      // Get Supabase session for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        toast({
+          title: "Fout",
+          description: "Je bent niet ingelogd. Log opnieuw in.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Use API route to create user with Admin API
       const response = await fetch('/api/create-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email: newUser.email,
@@ -235,12 +248,25 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
     if (!userToDelete || !effectiveOrgId || !currentAuthUser) return;
 
     try {
+      // Get Supabase session for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        toast({
+          title: "Fout",
+          description: "Je bent niet ingelogd. Log opnieuw in.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Use API route to delete user
       // The API will automatically delete completely if user is only in this organization
       const response = await fetch('/api/delete-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           userId: userToDelete.id,

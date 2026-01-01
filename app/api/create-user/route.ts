@@ -87,23 +87,16 @@ export async function POST(req: NextRequest) {
         );
       }
       // Verify manager belongs to the organization they're trying to add users to
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return NextResponse.json(
-          { success: false, error: 'Server configuration error' },
-          { status: 500 }
-        );
-      }
-      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-      const { data: userOrgs } = await supabaseClient
+      // Use the authenticated supabaseClient (already created above with auth header)
+      const { data: userOrgs, error: orgCheckError } = await supabaseClient
         .from('user_organizations')
         .select('organization_id')
         .eq('user_id', currentUserId)
         .eq('organization_id', organizationId)
         .single();
       
-      if (!userOrgs) {
+      if (orgCheckError || !userOrgs) {
+        console.error('Organization check failed:', orgCheckError);
         return NextResponse.json(
           { success: false, error: 'Unauthorized: You can only add users to your own organization' },
           { status: 403 }

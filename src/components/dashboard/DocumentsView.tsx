@@ -750,11 +750,15 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             delete newPrev[doc.id];
             return newPrev;
           });
+          
+          // Get error message - show user-friendly message
+          const errorMessage = error?.message || error?.toString() || 'Onbekende fout';
+          
           toast({
             title: "⚠️ RAG ingeschakeld, maar verwerking mislukt",
-            description: `${doc.name} is ingeschakeld voor RAG, maar verwerking is mislukt. Probeer het later opnieuw.`,
+            description: `${doc.name} is ingeschakeld voor RAG, maar verwerking is mislukt. ${errorMessage.includes('timeout') ? 'Het bestand is mogelijk te groot.' : ''} Controleer de console voor meer details.`,
             variant: "destructive",
-            duration: 5000,
+            duration: 7000, // Longer duration to give user time to read
           });
         }
       } else {

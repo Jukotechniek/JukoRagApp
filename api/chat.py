@@ -721,20 +721,41 @@ async def add_cors_header(request: Request, call_next):
     # Get origin from request
     origin = request.headers.get("origin")
     
-    # Allow localhost origins for development
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
+    # Allow localhost and local network origins for development
+    # Check if origin matches localhost, 127.0.0.1, or local network IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    allowed_patterns = [
+        "http://localhost:",
+        "http://127.0.0.1:",
+        "http://192.168.",
+        "http://10.",
+        "http://172.16.",
+        "http://172.17.",
+        "http://172.18.",
+        "http://172.19.",
+        "http://172.20.",
+        "http://172.21.",
+        "http://172.22.",
+        "http://172.23.",
+        "http://172.24.",
+        "http://172.25.",
+        "http://172.26.",
+        "http://172.27.",
+        "http://172.28.",
+        "http://172.29.",
+        "http://172.30.",
+        "http://172.31.",
     ]
     
-    if origin in allowed_origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "authorization, content-type, Authorization, Content-Type, Accept"
-        response.headers["Access-Control-Allow-Credentials"] = "false"
-        response.headers["Access-Control-Max-Age"] = "3600"
+    # For development: allow localhost and local network IPs
+    if origin:
+        # Check if origin matches any allowed pattern
+        origin_allowed = any(origin.startswith(pattern) for pattern in allowed_patterns)
+        if origin_allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "authorization, content-type, Authorization, Content-Type, Accept"
+            response.headers["Access-Control-Allow-Credentials"] = "false"
+            response.headers["Access-Control-Max-Age"] = "3600"
     elif not origin:
         # For requests without origin (like direct API calls), allow all
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -1799,21 +1820,38 @@ async def process_document_options(request: Request):
     # Get the origin from the request
     origin = request.headers.get("origin", "http://localhost:3000")
     
-    # Allow common localhost origins for development
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
+    # Allow localhost and local network origins for development
+    allowed_patterns = [
+        "http://localhost:",
+        "http://127.0.0.1:",
+        "http://192.168.",
+        "http://10.",
+        "http://172.16.",
+        "http://172.17.",
+        "http://172.18.",
+        "http://172.19.",
+        "http://172.20.",
+        "http://172.21.",
+        "http://172.22.",
+        "http://172.23.",
+        "http://172.24.",
+        "http://172.25.",
+        "http://172.26.",
+        "http://172.27.",
+        "http://172.28.",
+        "http://172.29.",
+        "http://172.30.",
+        "http://172.31.",
     ]
     
-    # If origin is in allowed list, use it; otherwise use the requested origin
-    if origin in allowed_origins:
+    # Check if origin matches any allowed pattern
+    if origin and any(origin.startswith(pattern) for pattern in allowed_patterns):
         allow_origin = origin
     elif not origin or origin == "null":
         allow_origin = "http://localhost:3000"  # Default for development
     else:
-        allow_origin = origin  # Allow the requested origin
+        # For development, allow any origin (be more permissive)
+        allow_origin = origin
     
     # Return response with CORS headers
     response = Response(
