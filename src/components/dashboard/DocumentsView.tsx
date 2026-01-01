@@ -31,7 +31,7 @@ import { supabase, supabaseUrl } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
-import { processDocumentForRAG, extractTextFromFile } from "@/lib/document-processing";
+import { processDocumentForRAG } from "@/lib/document-processing";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";

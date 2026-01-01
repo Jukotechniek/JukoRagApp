@@ -354,6 +354,7 @@ export default function DashboardPage() {
           .insert({
             organization_id: effectiveOrgId,
             conversation_id: conversationId,
+            user_id: user!.id, // IMPORTANT: Include user_id for assistant messages too
             role: "assistant",
             content: aiResponse,
           })
@@ -381,6 +382,7 @@ export default function DashboardPage() {
           .insert({
             organization_id: effectiveOrgId,
             conversation_id: conversationId,
+            user_id: user!.id, // IMPORTANT: Include user_id for assistant messages too
             role: "assistant",
             content: fallbackResponse,
           })

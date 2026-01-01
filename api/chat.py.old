@@ -227,58 +227,20 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
         
         all_docs = []
         seen_content = set()
-        seen_page_content = {}  # Track page + document_id combinations to avoid duplicates
         
-        # Better deduplication: use document_id + page + content hash
-        # This prevents duplicates from same page in same document
         for doc in keyword_docs:
-            doc_id = doc.metadata.get('document_id', 'unknown')
-            page = doc.metadata.get('page', doc.metadata.get('page_number_footer', 'unknown'))
-            page_key = f"{doc_id}:{page}"
-            
-            # Create a unique key: document + page + content hash
-            content_key = f"{page_key}:{doc.page_content[:500]}"
-            content_hash = hash(content_key)
-            
-            # Check if we've seen this exact content before
-            if content_hash not in seen_content:
-                # Also check if we've seen this page from this document before
-                # If yes, only add if content is significantly different (>50% different)
-                if page_key in seen_page_content:
-                    existing_content = seen_page_content[page_key]
-                    # Simple similarity check: if first 200 chars are same, skip
-                    if doc.page_content[:200] == existing_content[:200]:
-                        continue  # Skip duplicate from same page
-                
+            content_key = doc.page_content[:200]
+            if content_key not in seen_content:
                 all_docs.append(doc)
-                seen_content.add(content_hash)
-                seen_page_content[page_key] = doc.page_content
+                seen_content.add(content_key)
         
         for doc in semantic_docs:
-            doc_id = doc.metadata.get('document_id', 'unknown')
-            page = doc.metadata.get('page', doc.metadata.get('page_number_footer', 'unknown'))
-            page_key = f"{doc_id}:{page}"
-            
-            # Create a unique key: document + page + content hash
-            content_key = f"{page_key}:{doc.page_content[:500]}"
-            content_hash = hash(content_key)
-            
-            # Check if we've seen this exact content before
-            if content_hash not in seen_content:
-                # Also check if we've seen this page from this document before
-                if page_key in seen_page_content:
-                    existing_content = seen_page_content[page_key]
-                    # Simple similarity check: if first 200 chars are same, skip
-                    if doc.page_content[:200] == existing_content[:200]:
-                        continue  # Skip duplicate from same page
-                
+            content_key = doc.page_content[:200]
+            if content_key not in seen_content:
                 all_docs.append(doc)
-                seen_content.add(content_hash)
-                seen_page_content[page_key] = doc.page_content
+                seen_content.add(content_key)
         
-        # Limit to 5 results, prioritizing semantic results
-        # Sort by similarity if available (semantic docs have similarity score)
-        retrieved_docs = sorted(all_docs, key=lambda x: x.metadata.get('similarity', 0.0), reverse=True)[:5]
+        retrieved_docs = all_docs[:5]
         
         if combine_span:
             combine_span.update(
