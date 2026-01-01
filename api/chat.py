@@ -865,12 +865,12 @@ def load_history(organization_id: str, user_id: str, conversation_id: Optional[s
     start_time = time.time()
     
     try:
-        query = supabase.table("chat_messages").select("role, content, created_at").eq("organization_id", organization_id).order("created_at", desc=True).limit(limit)
+        # Always filter by user_id to ensure history is unique per user
+        # Also filter by conversation_id if provided, or just by user_id for user-specific history
+        query = supabase.table("chat_messages").select("role, content, created_at").eq("organization_id", organization_id).eq("user_id", user_id).order("created_at", desc=True).limit(limit)
         
         if conversation_id:
             query = query.eq("conversation_id", conversation_id)
-        else:
-            query = query.eq("user_id", user_id)
         
         result = query.execute()
         

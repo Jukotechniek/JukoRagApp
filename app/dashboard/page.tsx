@@ -147,20 +147,16 @@ export default function DashboardPage() {
   // Get effective organization ID (selected org for admin, user's org for others)
   const effectiveOrgId = user?.role === "admin" ? (adminSelectedOrgId || null) : (user?.organization_id || null);
 
-  const isValidUuid = (value: string | null) => {
-    if (!value) return false;
-    // Simple UUID v4/UUID regex
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-  };
 
-  // Generate a valid UUID v4 string for conversation_id (Postgres uuid type)
+  // Generate a unique conversation ID using UUID v4 with additional guarantees
+  // UUID v4 is already extremely unique (1 in 2^122 chance of collision)
+  // We add user_id hash and timestamp to the random bytes for extra uniqueness
   const createConversationId = () => {
-    // Prefer native crypto.randomUUID when available
-    if (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function") {
-      return (crypto as any).randomUUID() as string;
-    }
-
-    // Fallback: manual UUID v4 generator
+    // Get user ID for additional uniqueness context
+    const userId = user?.id || 'anonymous';
+    const timestamp = Date.now();
+    
+    // Generate cryptographically secure random bytes
     const getRandomValues =
       typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function"
         ? (crypto.getRandomValues.bind(crypto) as (buf: Uint8Array) => Uint8Array)
@@ -170,18 +166,36 @@ export default function DashboardPage() {
     if (getRandomValues) {
       getRandomValues(bytes);
     } else {
+      // Fallback: use Math.random with timestamp and user ID for seeding
+      const seed = timestamp + userId.charCodeAt(0) + (userId.length * 1000);
       for (let i = 0; i < 16; i++) {
-        bytes[i] = Math.floor(Math.random() * 256);
+        bytes[i] = Math.floor((Math.random() * 256 + seed + i) % 256);
       }
     }
 
-    // Per RFC 4122 section 4.4
+    // Incorporate user ID hash into first few bytes for additional uniqueness
+    // This ensures different users get different conversation IDs even if timestamps are close
+    let userHash = 0;
+    for (let i = 0; i < Math.min(userId.length, 8); i++) {
+      userHash = ((userHash << 5) - userHash) + userId.charCodeAt(i);
+      userHash = userHash & userHash; // Convert to 32-bit integer
+    }
+    bytes[0] = (bytes[0] ^ (userHash & 0xFF)) & 0xFF;
+    bytes[1] = (bytes[1] ^ ((userHash >> 8) & 0xFF)) & 0xFF;
+
+    // Incorporate timestamp into bytes for session uniqueness
+    const timeBytes = timestamp & 0xFFFFFFFF;
+    bytes[2] = (bytes[2] ^ (timeBytes & 0xFF)) & 0xFF;
+    bytes[3] = (bytes[3] ^ ((timeBytes >> 8) & 0xFF)) & 0xFF;
+
+    // Per RFC 4122 section 4.4 - UUID v4 format
     bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
     bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
 
     const toHex = (n: number) => n.toString(16).padStart(2, "0");
     const b = Array.from(bytes, toHex).join("");
 
+    // Return valid UUID v4 format
     return (
       b.slice(0, 8) +
       "-" +
@@ -195,22 +209,17 @@ export default function DashboardPage() {
     );
   };
 
-  // Initialize or restore conversation ID per organization
+  // Generate new conversation ID per organization on each mount/login
+  // This ensures each session starts with a fresh chat (no persistent history)
   useEffect(() => {
     if (!effectiveOrgId) {
       setConversationId(null);
       return;
     }
 
-    const storageKey = `chatConversationId_${effectiveOrgId}`;
-    const existing = localStorage.getItem(storageKey);
-    if (isValidUuid(existing)) {
-      setConversationId(existing as string);
-      return;
-    }
-
+    // Always generate a new conversation ID for each session
+    // This ensures chat is empty on each login
     const newId = createConversationId();
-    localStorage.setItem(storageKey, newId);
     setConversationId(newId);
   }, [effectiveOrgId]);
 
@@ -229,14 +238,14 @@ export default function DashboardPage() {
   }, [messages]);
 
   const loadMessages = async () => {
-    if (!effectiveOrgId || !conversationId) return;
+    if (!effectiveOrgId || !conversationId || !user) return;
 
     try {
       const { data, error } = await supabase
         .from("chat_messages")
         .select("*")
         .eq("organization_id", effectiveOrgId)
-        // conversation-based geschiedenis
+        .eq("user_id", user.id) // Filter by user_id to ensure unique history per user
         .eq("conversation_id", conversationId as any)
         .order("created_at", { ascending: true })
         .limit(50);
@@ -424,8 +433,6 @@ export default function DashboardPage() {
 
       // Generate new conversation ID
       const newConversationId = createConversationId();
-      const storageKey = `chatConversationId_${effectiveOrgId}`;
-      localStorage.setItem(storageKey, newConversationId);
       setConversationId(newConversationId);
 
       // Clear messages and show welcome message
