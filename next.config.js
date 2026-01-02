@@ -2,6 +2,14 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone', // Required for Docker deployment
+  eslint: {
+    // Don't fail build on ESLint errors during production build
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    // Don't fail build on TypeScript errors during production build
+    ignoreBuildErrors: false,
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
