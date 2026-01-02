@@ -15,10 +15,14 @@ export default function AuthPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+  // TypeScript-safe initialization: useSearchParams() always returns a ReadonlyURLSearchParams in Next.js 15
   const [isLogin, setIsLogin] = useState(() => {
-    if (!searchParams) return true;
-    const mode = searchParams.get("mode");
-    return mode !== "register";
+    try {
+      const mode = searchParams?.get("mode") ?? null;
+      return mode !== "register";
+    } catch {
+      return true;
+    }
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
