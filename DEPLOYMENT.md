@@ -326,3 +326,4 @@ Voor problemen:
 4. Check Nginx logs: `sudo tail -f /var/log/nginx/error.log`
 
 
+
