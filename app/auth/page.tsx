@@ -15,7 +15,10 @@ export default function AuthPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
-  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
+  const [isLogin, setIsLogin] = useState(() => {
+    if (!searchParams) return true;
+    return searchParams.get("mode") !== "register";
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
   const [inviteEmail, setInviteEmail] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export default function AuthPage() {
   });
 
   useEffect(() => {
+    if (!searchParams) return;
     setIsLogin(searchParams.get("mode") !== "register");
     
     // Check for invite/password reset hash fragments
