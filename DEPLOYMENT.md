@@ -325,3 +325,4 @@ Voor problemen:
 3. Verify environment variables: `docker compose config`
 4. Check Nginx logs: `sudo tail -f /var/log/nginx/error.log`
 
+
