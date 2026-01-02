@@ -40,7 +40,7 @@ export const HowItWorks = () => {
         <div className="text-center max-w-2xl mx-auto mb-16">
           <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
             Zo werkt{" "}
-            <span className="text-gradient">TechRAG</span>
+            <span className="text-gradient">Juko bot</span>
           </h2>
           <p className="text-lg text-muted-foreground">
             In vier eenvoudige stappen naar slimme technische ondersteuning.

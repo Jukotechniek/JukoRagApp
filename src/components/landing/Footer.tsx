@@ -13,7 +13,7 @@ export const Footer = () => {
                 <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
               <span className="font-display text-xl font-bold text-foreground">
-                Tech<span className="text-gradient">RAG</span>
+                Juko<span className="text-gradient">bot</span>
               </span>
             </Link>
             <p className="text-muted-foreground max-w-md mb-6">
@@ -21,9 +21,9 @@ export const Footer = () => {
               Bespaar tijd en verminder fouten met directe antwoorden op complexe vragen.
             </p>
             <div className="space-y-2">
-              <a href="mailto:info@techrag.nl" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+              <a href="mailto:info@jukobot.nl" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
                 <Mail className="w-4 h-4" />
-                info@techrag.nl
+                info@jukobot.nl
               </a>
               <a href="tel:+31201234567" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="w-4 h-4" />
@@ -83,7 +83,7 @@ export const Footer = () => {
         {/* Bottom */}
         <div className="pt-8 border-t border-border/30 text-center">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} TechRAG. Alle rechten voorbehouden.
+            © {new Date().getFullYear()} Juko bot. Alle rechten voorbehouden.
           </p>
         </div>
       </div>

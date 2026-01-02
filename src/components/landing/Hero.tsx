@@ -45,12 +45,15 @@ export const Hero = () => {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-slide-up" style={{ animationDelay: "0.3s" }}>
-            <Link href="/auth?mode=register">
+            <a 
+              href="mailto:info@jukobot.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
+              className="group"
+            >
               <Button variant="hero" size="xl" className="group">
                 Start Gratis Trial
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
-            </Link>
+            </a>
             <a href="#how-it-works">
               <Button variant="hero-outline" size="xl">
                 Bekijk Demo
@@ -87,7 +90,7 @@ export const Hero = () => {
                 <div className="w-3 h-3 rounded-full bg-destructive" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="ml-4 text-sm text-muted-foreground">TechRAG Assistant</span>
+                <span className="ml-4 text-sm text-muted-foreground">Juko bot Assistant</span>
               </div>
 
               {/* Chat Messages */}

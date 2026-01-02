@@ -278,7 +278,7 @@ export default function AuthPage() {
                 ? "Stel uw wachtwoord in om uw account te activeren"
                 : isLogin
                 ? "Log in om verder te gaan naar uw dashboard"
-                : "Maak een gratis account aan en probeer TechRAG 14 dagen"}
+                : "Maak een gratis account aan en probeer Juko bot 14 dagen"}
             </p>
           </div>
 
@@ -415,7 +415,7 @@ export default function AuthPage() {
         {/* Content */}
         <div className="relative z-10 max-w-lg p-12">
           <blockquote className="text-2xl font-display font-medium text-foreground mb-6">
-            "TechRAG heeft onze responstijd gehalveerd. Onze monteurs vinden nu direct het antwoord dat ze nodig hebben."
+            "Juko bot heeft onze responstijd gehalveerd. Onze monteurs vinden nu direct het antwoord dat ze nodig hebben."
           </blockquote>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">

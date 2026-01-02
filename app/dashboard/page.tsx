@@ -266,7 +266,7 @@ export default function DashboardPage() {
           {
             id: "welcome",
             role: "assistant",
-            content: "Welkom bij TechRAG! Stel gerust een vraag over uw technische documentatie.",
+            content: "Welkom bij Juko bot! Stel gerust een vraag over uw technische documentatie.",
           },
         ]);
       }

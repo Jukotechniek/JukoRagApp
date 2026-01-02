@@ -18,7 +18,7 @@ export const Navbar = () => {
               <Bot className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="font-display text-xl font-bold text-foreground">
-              Tech<span className="text-gradient">RAG</span>
+              Juko<span className="text-gradient">bot</span>
             </span>
           </Link>
 
@@ -40,9 +40,9 @@ export const Navbar = () => {
             <Link href="/auth">
               <Button variant="ghost">Inloggen</Button>
             </Link>
-            <Link href="/auth?mode=register">
+            <a href="mailto:info@jukobot.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
               <Button variant="hero">Start Gratis</Button>
-            </Link>
+            </a>
           </div>
 
           {/* Mobile Menu Button */}
@@ -85,11 +85,14 @@ export const Navbar = () => {
                     Inloggen
                   </Button>
                 </Link>
-                <Link href="/auth?mode=register" onClick={() => setIsOpen(false)}>
+                <a 
+                  href="mailto:info@jukobot.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
+                  onClick={() => setIsOpen(false)}
+                >
                   <Button variant="hero" className="w-full">
                     Start Gratis
                   </Button>
-                </Link>
+                </a>
               </div>
             </div>
           </div>

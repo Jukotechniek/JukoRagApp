@@ -53,7 +53,7 @@ vector_store = SupabaseVectorStore(
 llm = ChatOpenAI(model="gpt-4.1", temperature=0)
 
 # ===== System Prompt =====
-SYSTEM_PROMPT = """Je bent TechRAG Assistant: een technische documentatie-assistent
+SYSTEM_PROMPT = """Je bent Juko bot Assistant: een technische documentatie-assistent
 voor industriële machines en elektrische schema's.
 
 JE DOEL
