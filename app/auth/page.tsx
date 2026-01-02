@@ -16,8 +16,8 @@ export default function AuthPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(() => {
-    if (!searchParams) return true;
-    return searchParams.get("mode") !== "register";
+    const mode = searchParams?.get("mode");
+    return mode !== "register";
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
