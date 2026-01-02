@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, organizationId, deleteFromAuth } = body;
+    const { userId, organizationId } = body;
 
     if (!userId || !organizationId) {
       return NextResponse.json(
