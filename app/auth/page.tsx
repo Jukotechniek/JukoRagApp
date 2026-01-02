@@ -26,7 +26,6 @@ export default function AuthPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -69,10 +68,10 @@ export default function AuthPage() {
             supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: params.get('refresh_token') || '',
-            }).then(({ data, error }) => {
+            }).then(({ data }) => {
               if (data?.user?.email) {
-                setInviteEmail(data.user.email);
-                setFormData(prev => ({ ...prev, email: data.user.email || '' }));
+                const userEmail = data.user.email;
+                setFormData(prev => ({ ...prev, email: userEmail }));
               }
             });
           }
@@ -100,7 +99,7 @@ export default function AuthPage() {
     };
   }, [searchParams, toast]);
 
-  const { login, register, user, isAuthenticated, loading, supabaseUser } = useAuth();
+  const { login, register, supabaseUser } = useAuth();
 
   // Redirect when authenticated - but NOT if user is setting password
   // Don't wait for full user data load to prevent hanging

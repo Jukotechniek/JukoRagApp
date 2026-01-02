@@ -7,8 +7,8 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Temporarily ignore TypeScript errors during build to allow deployment
-    ignoreBuildErrors: true,
+    // TypeScript errors are now resolved - strict checking enabled
+    ignoreBuildErrors: false,
   },
   experimental: {
     serverActions: {
