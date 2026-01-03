@@ -47,7 +47,7 @@
 
     /* Custom tokens */
     --gradient-primary: linear-gradient(135deg, hsl(0 75% 60%) 0%, hsl(15 80% 55%) 100%);
-    --gradient-light: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(220 10% 98%) 100%);
+    --gradient-light: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 99%) 100%);
     --gradient-dark: linear-gradient(180deg, hsl(220 20% 8%) 0%, hsl(220 25% 5%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 10% 98%) 100%);
     --gradient-glow: radial-gradient(ellipse at center, hsl(0 75% 60% / 0.15) 0%, transparent 70%);
@@ -124,11 +124,19 @@
   }
 
   .glass {
-    @apply backdrop-blur-xl bg-card/60 border border-border/50;
+    @apply backdrop-blur-xl bg-white/80 border border-border/40 shadow-sm;
+  }
+
+  .dark .glass {
+    @apply bg-card/60 border-border/50;
   }
 
   .glass-hover {
-    @apply transition-all duration-300 hover:bg-card/80 hover:border-primary/30;
+    @apply transition-all duration-300 hover:bg-white hover:border-border/60 hover:shadow-md;
+  }
+
+  .dark .glass-hover {
+    @apply hover:bg-card/80 hover:border-primary/30;
   }
 
   .glow {

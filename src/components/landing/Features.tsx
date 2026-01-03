@@ -35,10 +35,10 @@ const features = [
 
 export const Features = () => {
   return (
-    <section id="features" className="py-24 relative">
+    <section id="features" className="py-16 relative">
       {/* Background Effect */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[128px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/3 dark:bg-primary/5 rounded-full blur-[128px]" />
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
@@ -58,7 +58,7 @@ export const Features = () => {
           {features.map((feature, index) => (
             <div
               key={feature.title}
-              className="group glass glass-hover rounded-2xl p-6 animate-slide-up"
+              className="group bg-white dark:bg-card/60 backdrop-blur-xl rounded-2xl p-6 animate-slide-up border border-border/60 dark:border-border/50 shadow-md hover:shadow-lg transition-all duration-300 hover:border-border/80 dark:hover:border-primary/30"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">

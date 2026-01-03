@@ -71,8 +71,10 @@ export const Pricing = () => {
           {plans.map((plan, index) => (
             <div
               key={plan.name}
-              className={`relative glass rounded-2xl p-8 animate-slide-up ${
-                plan.popular ? "border-primary/50 shadow-lg shadow-primary/10" : ""
+              className={`relative bg-white dark:bg-card/60 backdrop-blur-xl rounded-2xl p-8 animate-slide-up border shadow-md ${
+                plan.popular 
+                  ? "border-primary/60 dark:border-primary/50 shadow-xl shadow-primary/30 dark:shadow-primary/10" 
+                  : "border-border/60 dark:border-border/50"
               }`}
               style={{ animationDelay: `${index * 0.1}s` }}
             >

@@ -32,7 +32,7 @@ export const HowItWorks = () => {
     <section id="how-it-works" className="py-24 relative">
       {/* Background Effect */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute bottom-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[128px]" />
+        <div className="absolute bottom-0 left-1/4 w-[600px] h-[600px] bg-primary/3 dark:bg-primary/5 rounded-full blur-[128px]" />
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
@@ -63,7 +63,7 @@ export const HowItWorks = () => {
               <div className="text-center">
                 {/* Step Number & Icon */}
                 <div className="relative inline-flex mb-6">
-                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/5 flex items-center justify-center border border-primary/10 dark:border-transparent">
                     <step.icon className="w-10 h-10 text-primary" />
                   </div>
                   <span className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold flex items-center justify-center">
