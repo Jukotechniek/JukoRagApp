@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, MessageSquare, FileText, Shield } from "lucide-react";
+import { ArrowRight, MessageSquare, FileText, Zap } from "lucide-react";
 
 export const Hero = () => {
   return (
@@ -62,17 +62,17 @@ export const Hero = () => {
 
           {/* Feature Pills */}
           <div className="flex flex-wrap items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: "0.4s" }}>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full glass">
+            <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white dark:bg-card/60 backdrop-blur-xl border border-border/60 dark:border-border/50 shadow-md">
               <MessageSquare className="w-4 h-4 text-primary" />
-              <span className="text-sm text-muted-foreground">Natuurlijke Vragen</span>
+              <span className="text-sm font-medium text-foreground">Natuurlijke Vragen</span>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full glass">
+            <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white dark:bg-card/60 backdrop-blur-xl border border-border/60 dark:border-border/50 shadow-md">
               <FileText className="w-4 h-4 text-primary" />
-              <span className="text-sm text-muted-foreground">Document Upload</span>
+              <span className="text-sm font-medium text-foreground">Document Upload</span>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full glass">
-              <Shield className="w-4 h-4 text-primary" />
-              <span className="text-sm text-muted-foreground">Veilige Data</span>
+            <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white dark:bg-card/60 backdrop-blur-xl border border-border/60 dark:border-border/50 shadow-md">
+              <Zap className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Snelle Antwoorden</span>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@ export const Hero = () => {
             <div className="absolute -inset-4 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 dark:from-primary/20 dark:via-primary/10 dark:to-primary/20 rounded-3xl blur-xl" />
             
             {/* Chat Preview Card */}
-            <div className="relative glass rounded-2xl p-6 md:p-8 shadow-lg dark:shadow-2xl">
+            <div className="relative glass rounded-2xl p-8 md:p-10 shadow-lg dark:shadow-2xl">
               <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/50">
                 <div className="w-3 h-3 rounded-full bg-destructive" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
@@ -93,15 +93,15 @@ export const Hero = () => {
               </div>
 
               {/* Chat Messages */}
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="flex justify-end">
-                  <div className="bg-primary/15 dark:bg-primary/20 rounded-2xl rounded-br-md px-4 py-3 max-w-md border border-primary/10 dark:border-transparent">
-                    <p className="text-sm text-foreground/90">Wat is de maximale druk voor de hydraulische cilinder type HCX-200?</p>
+                  <div className="bg-primary/15 dark:bg-primary/20 rounded-2xl rounded-br-md px-5 py-4 max-w-md border border-primary/10 dark:border-transparent">
+                    <p className="text-sm leading-relaxed text-foreground/90">Wat is de maximale druk voor de hydraulische cilinder type HCX-200?</p>
                   </div>
                 </div>
                 <div className="flex justify-start">
-                  <div className="bg-secondary/80 dark:bg-secondary rounded-2xl rounded-bl-md px-4 py-3 max-w-md border border-border/50 dark:border-transparent">
-                    <p className="text-sm text-secondary-foreground">
+                  <div className="bg-secondary/80 dark:bg-secondary rounded-2xl rounded-bl-md px-5 py-4 max-w-md border border-border/50 dark:border-transparent">
+                    <p className="text-sm leading-relaxed text-secondary-foreground">
                       Volgens de <span className="text-primary font-medium">HCX-200 specificaties (pagina 23)</span>, is de maximale werkdruk 250 bar. 
                       Let op: bij temperaturen boven 60°C moet u de druk verlagen naar 200 bar.
                     </p>

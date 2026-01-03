@@ -1,4 +1,4 @@
-import { Upload, MessageSquare, Users, Shield, Zap, BarChart } from "lucide-react";
+import { Upload, MessageSquare, Users, Zap, BarChart } from "lucide-react";
 
 const features = [
   {
@@ -15,11 +15,6 @@ const features = [
     icon: Users,
     title: "Team Management",
     description: "Beheer uw organisatie met verschillende rollen: admins, managers en monteurs met eigen rechten.",
-  },
-  {
-    icon: Shield,
-    title: "Veilige Data",
-    description: "Uw documenten blijven privé. Enterprise-grade beveiliging met encryptie en toegangscontrole.",
   },
   {
     icon: Zap,
@@ -43,7 +38,7 @@ export const Features = () => {
 
       <div className="container mx-auto px-4 relative z-10">
         {/* Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16">
+        <div className="text-center max-w-2xl mx-auto mb-16 -mt-20">
           <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
             Alles wat u nodig heeft voor{" "}
             <span className="text-gradient">technische ondersteuning</span>
