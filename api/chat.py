@@ -5,7 +5,14 @@ import uuid
 from typing import Optional, List
 from fastapi import HTTPException, Header
 from pydantic import BaseModel
-from langchain.agents.agent_executor import AgentExecutor
+# Try different import paths for AgentExecutor based on LangChain version
+try:
+    from langchain.agents import AgentExecutor
+except ImportError:
+    try:
+        from langchain.agents.agent import AgentExecutor
+    except ImportError:
+        from langchain_classic.agents import AgentExecutor
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.documents import Document
 from langchain_core.callbacks import BaseCallbackHandler

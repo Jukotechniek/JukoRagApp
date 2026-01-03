@@ -6,6 +6,7 @@ langchain-openai
 langchain-community
 langchain-core
 langchainhub
+langchain-classic  # Fallback for AgentExecutor in LangChain 1.0+
 supabase
 openai
 pydantic
