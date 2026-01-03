@@ -418,7 +418,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           <div className="glass rounded-2xl p-6 mb-6 border-primary/30">
             <div className="flex items-start justify-between mb-4">
               <div>
-                {user?.role === "admin" && (
+                {user?.role === "admin" && selectedOrganization && (
                   <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
                     <Building className="w-4 h-4" />
                     <span>{selectedOrganization.name}</span>

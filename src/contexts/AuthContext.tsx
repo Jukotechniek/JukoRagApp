@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setLoading(false);
       }
-    }).catch((error) => {
+    }).catch(() => {
       if (mounted) {
         clearTimeout(timeoutId);
         setLoading(false);
@@ -84,7 +84,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return;
       
       clearTimeout(timeoutId);
@@ -122,7 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (_userId: string) => {
     // Prevent multiple simultaneous calls - check and set immediately
     if ((loadUserData as any).inProgress) {
       return;

@@ -4,13 +4,10 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Coins, 
-  TrendingUp, 
   Activity, 
   DollarSign,
   FileText,
-  MessageSquare,
-  Database
+  MessageSquare
 } from "lucide-react";
 import { format, subDays, subWeeks, subMonths } from "date-fns";
 import { nl } from "date-fns/locale";

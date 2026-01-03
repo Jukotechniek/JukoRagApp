@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { FileText, Upload, Search, MoreVertical, File, FileImage, FileSpreadsheet, Trash2, Download, X } from "lucide-react";
+import { FileText, Upload, Search, MoreVertical, File, FileImage, FileSpreadsheet, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,14 +18,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, supabaseUrl } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,7 +26,6 @@ import { nl } from "date-fns/locale";
 import { processDocumentForRAG } from "@/lib/document-processing";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import type { Database } from "@/types/database";
 
 type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
@@ -210,7 +201,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
         const { documents } = await response.json();
         const data = documents;
-        const error = null;
         
         console.log("Documents loaded via API:", data?.length || 0, "for organization:", effectiveOrgId);
         
@@ -478,7 +468,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         const storageUrl = `${supabaseUrl}/storage/v1/object/documents/${encodeURIComponent(fileName)}`;
 
         // Save document metadata to database
-        const { data: savedDocument, error: dbError } = await (supabase
+        const { error: dbError } = await (supabase
           .from("documents") as any)
           .insert({
             organization_id: effectiveOrgId,

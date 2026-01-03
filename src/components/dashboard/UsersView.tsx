@@ -540,6 +540,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
       </Dialog>
 
       {/* Edit Profile Dialog */}
+      {currentUser && (
       <Dialog open={editProfileDialogOpen} onOpenChange={setEditProfileDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -570,6 +571,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

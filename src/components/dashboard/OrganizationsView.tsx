@@ -32,49 +32,6 @@ interface Organization {
   createdAt: string;
 }
 
-const mockOrganizations: Organization[] = [
-  {
-    id: "1",
-    name: "TechCorp Industries",
-    plan: "professional",
-    usersCount: 45,
-    documentsCount: 128,
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "2",
-    name: "BuildRight BV",
-    plan: "professional",
-    usersCount: 12,
-    documentsCount: 34,
-    createdAt: "2024-02-20",
-  },
-  {
-    id: "3",
-    name: "Innovate Solutions",
-    plan: "starter",
-    usersCount: 5,
-    documentsCount: 8,
-    createdAt: "2024-03-10",
-  },
-  {
-    id: "4",
-    name: "MechaPro Engineering",
-    plan: "professional",
-    usersCount: 18,
-    documentsCount: 67,
-    createdAt: "2024-04-05",
-  },
-  {
-    id: "5",
-    name: "ElectraFix Nederland",
-    plan: "professional",
-    usersCount: 32,
-    documentsCount: 89,
-    createdAt: "2024-05-12",
-  },
-];
-
 const planColors = {
   starter: "bg-muted text-muted-foreground",
   professional: "bg-primary/20 text-primary",
