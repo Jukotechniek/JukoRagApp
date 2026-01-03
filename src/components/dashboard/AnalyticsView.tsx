@@ -37,7 +37,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
   });
   const [weeklyData, setWeeklyData] = useState<{ day: string; questions: number }[]>([]);
   const [topQuestions, setTopQuestions] = useState<{ question: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   // Use selected organization ID or fall back to user's organization
@@ -54,7 +53,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
     if (!user) return;
 
     try {
-      setLoading(true);
       const now = new Date();
       let startDate: Date;
 
@@ -176,8 +174,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       generateTimeSeriesData(analyticsData || [], startDate);
     } catch (error) {
       console.error("Error loading analytics:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
