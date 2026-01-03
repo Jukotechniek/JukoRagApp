@@ -5,7 +5,7 @@ import uuid
 from typing import Optional, List
 from fastapi import HTTPException, Header
 from pydantic import BaseModel
-from langchain.agents import AgentExecutor
+from langchain.agents.agent_executor import AgentExecutor
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.documents import Document
 from langchain_core.callbacks import BaseCallbackHandler
