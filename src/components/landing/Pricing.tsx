@@ -1,6 +1,5 @@
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 const plans = [
   {
@@ -111,14 +110,17 @@ export const Pricing = () => {
                 ))}
               </ul>
 
-              <Link href="/auth?mode=register" className="block">
+              <a 
+                href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in het ${plan.name} plan."
+                className="block"
+              >
                 <Button
                   variant={plan.popular ? "hero" : "outline"}
                   className="w-full"
                 >
-                  {plan.name === "Enterprise" ? "Contact Opnemen" : "Start Nu"}
+                  Contact Opnemen
                 </Button>
-              </Link>
+              </a>
             </div>
           ))}
         </div>

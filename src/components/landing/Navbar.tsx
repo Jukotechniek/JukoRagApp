@@ -40,7 +40,7 @@ export const Navbar = () => {
             <Link href="/auth">
               <Button variant="ghost">Inloggen</Button>
             </Link>
-            <a href="mailto:info@jukobot.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
+            <a href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
               <Button variant="hero">Start Gratis</Button>
             </a>
           </div>
@@ -86,7 +86,7 @@ export const Navbar = () => {
                   </Button>
                 </Link>
                 <a 
-                  href="mailto:info@jukobot.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
+                  href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
                   onClick={() => setIsOpen(false)}
                 >
                   <Button variant="hero" className="w-full">

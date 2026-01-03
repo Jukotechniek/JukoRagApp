@@ -15,16 +15,8 @@ function AuthPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
-  // TypeScript-safe initialization: handle null searchParams
-  const [isLogin, setIsLogin] = useState(() => {
-    if (!searchParams) return true;
-    try {
-      const mode = searchParams.get("mode");
-      return mode !== "register";
-    } catch {
-      return true;
-    }
-  });
+  // Always in login mode - registration disabled
+  const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
 
@@ -36,8 +28,12 @@ function AuthPageContent() {
   });
 
   useEffect(() => {
+    // Redirect to login if someone tries to register
     if (!searchParams) return;
-    setIsLogin(searchParams.get("mode") !== "register");
+    if (searchParams.get("mode") === "register") {
+      router.replace("/auth");
+    }
+    setIsLogin(true);
     
     // Check for invite/password reset hash fragments
     const handleHashChange = () => {
@@ -280,14 +276,14 @@ function AuthPageContent() {
                 ? "Wachtwoord instellen" 
                 : isLogin 
                 ? "Welkom terug" 
-                : "Start uw trial"}
+                : "Account aanmaken"}
             </h1>
             <p className="text-muted-foreground">
               {isSettingPassword
                 ? "Stel uw wachtwoord in om uw account te activeren"
                 : isLogin
                 ? "Log in om verder te gaan naar uw dashboard"
-                : "Maak een gratis account aan en probeer Juko bot 14 dagen"}
+                : "Maak een account aan om te beginnen"}
             </p>
           </div>
 
@@ -399,16 +395,16 @@ function AuthPageContent() {
             </Button>
           </form>
 
-          {/* Toggle - only show if not setting password */}
+          {/* Registration disabled - only show contact link */}
           {!isSettingPassword && (
             <p className="text-center text-muted-foreground mt-6">
-              {isLogin ? "Nog geen account? " : "Al een account? "}
-              <button
-                onClick={() => setIsLogin(!isLogin)}
+              Geen account?{" "}
+              <a
+                href="mailto:info@jukotechniek.nl?subject=Account Aanvraag&body=Ik ben geïnteresseerd in een account."
                 className="text-primary hover:underline font-medium"
               >
-                {isLogin ? "Registreer hier" : "Log hier in"}
-              </button>
+                Neem contact op
+              </a>
             </p>
           )}
 
