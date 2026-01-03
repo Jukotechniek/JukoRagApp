@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { CreditCard, Check, X, Download, Calendar, Building2, Sparkles, Building } from "lucide-react";
+import { CreditCard, Check, Download, Calendar, Sparkles, Building } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
