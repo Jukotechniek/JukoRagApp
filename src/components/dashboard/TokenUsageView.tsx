@@ -16,7 +16,7 @@ import { format, subDays, subWeeks, subMonths } from "date-fns";
 import { nl } from "date-fns/locale";
 
 interface TokenUsageViewProps {
-  selectedOrganizationId?: string;
+  selectedOrganizationId?: string | null;
 }
 
 interface TokenUsage {
