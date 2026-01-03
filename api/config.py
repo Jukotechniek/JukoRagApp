@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from supabase.client import Client, create_client
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
-from langchain.agents import create_tool_calling_agent
+# create_tool_calling_agent is imported in chat.py where it's actually used
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langfuse import Langfuse

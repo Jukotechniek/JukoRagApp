@@ -346,7 +346,16 @@ def retrieve(query: str):
 tools = [retrieve]
 
 # Initiating the agent
-from langchain.agents import create_tool_calling_agent
+# Try different import paths for create_tool_calling_agent based on LangChain version
+try:
+    from langchain.agents import create_tool_calling_agent
+except ImportError:
+    try:
+        from langchain_classic.agents import create_tool_calling_agent
+    except ImportError:
+        # Fallback: try importing from langchain_core if available
+        raise ImportError("create_tool_calling_agent not found in langchain.agents or langchain_classic.agents. Please install langchain-classic: pip install langchain-classic")
+
 agent = create_tool_calling_agent(llm, tools, prompt)
 
 # LangChain callback handler for Langfuse tracking
