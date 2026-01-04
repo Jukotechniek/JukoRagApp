@@ -238,9 +238,18 @@ export default function DashboardPage() {
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    // Use setTimeout to ensure DOM is updated before scrolling
+    const timeoutId = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'end',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
   }, [messages]);
 
   const loadMessages = async () => {
@@ -363,6 +372,16 @@ export default function DashboardPage() {
                   : msg
               )
             );
+            // Scroll to bottom during streaming
+            setTimeout(() => {
+              if (messagesEndRef.current) {
+                messagesEndRef.current.scrollIntoView({ 
+                  behavior: 'smooth',
+                  block: 'end',
+                  inline: 'nearest'
+                });
+              }
+            }, 50);
           }
         );
 
@@ -710,7 +729,7 @@ export default function DashboardPage() {
 
               {/* Messages - Scrollable container with padding for fixed input */}
               <div 
-                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0 pb-28 lg:pb-4"
+                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0 pb-32 lg:pb-4"
               >
                 {messages.map((message) => (
                   <div
@@ -775,12 +794,12 @@ export default function DashboardPage() {
                     )}
                   </div>
                 ))}
-                {/* Invisible element to scroll to */}
-                <div ref={messagesEndRef} />
+                {/* Invisible element to scroll to - with extra spacing on mobile */}
+                <div ref={messagesEndRef} className="h-32 lg:h-4" />
               </div>
 
               {/* Input - Fixed on mobile, sticky on desktop */}
-              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background lg:bg-transparent border-t border-border/30 px-4 pt-4 pb-6 lg:p-4 flex-shrink-0 z-20">
+              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background lg:bg-transparent border-t border-border/30 px-4 pt-4 pb-6 lg:pb-4 flex-shrink-0 z-20" style={{ paddingBottom: 'max(1.5rem, calc(1.5rem + env(safe-area-inset-bottom)))' }}>
                 <div className="flex items-center gap-3 w-full lg:max-w-4xl lg:mx-auto">
                   <Input
                     value={inputValue}

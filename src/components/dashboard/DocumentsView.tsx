@@ -939,8 +939,9 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                     
                     {canEdit && (
                       <div className="flex items-center gap-1.5 sm:gap-2">
-                        <Label htmlFor={`rag-${doc.id}`} className="text-xs sm:text-sm text-muted-foreground cursor-pointer hidden sm:block">
-                          RAG
+                        <Label htmlFor={`rag-${doc.id}`} className="text-xs sm:text-sm text-muted-foreground cursor-pointer">
+                          <span className="hidden sm:inline">Verwerk document</span>
+                          <span className="sm:hidden">Verwerk</span>
                         </Label>
                         <Switch
                           id={`rag-${doc.id}`}

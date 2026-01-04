@@ -34,28 +34,129 @@ const SettingsView = () => {
     techniciansCanViewDocuments: false,
   });
   const [loadingOrgSettings, setLoadingOrgSettings] = useState(true);
+  const [loadingPreferences, setLoadingPreferences] = useState(true);
 
-  const handleSaveProfile = () => {
-    toast({
-      title: "Profiel bijgewerkt",
-      description: "Uw profielgegevens zijn succesvol opgeslagen.",
-    });
+  // Load user preferences
+  useEffect(() => {
+    if (user?.id) {
+      loadUserPreferences();
+    }
+  }, [user?.id]);
+
+  const loadUserPreferences = async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoadingPreferences(true);
+      const { data, error } = await supabase
+        .from("user_preferences")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      if (data) {
+        setSecurity({
+          twoFactor: data.two_factor_enabled || false,
+          sessionTimeout: String(data.session_timeout_minutes || 30),
+        });
+        if (data.theme) {
+          setTheme(data.theme);
+        }
+      }
+    } catch (error: any) {
+      console.error("Error loading user preferences:", error);
+    } finally {
+      setLoadingPreferences(false);
+    }
   };
 
-  const handleSaveSecurity = () => {
-    toast({
-      title: "Beveiligingsinstellingen bijgewerkt",
-      description: "Uw beveiligingsinstellingen zijn opgeslagen.",
-    });
+  const saveUserPreferences = async (updates: {
+    theme?: string;
+    two_factor_enabled?: boolean;
+    session_timeout_minutes?: number;
+  }) => {
+    if (!user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_preferences")
+        .upsert({
+          user_id: user.id,
+          ...updates,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Error saving user preferences:", error);
+      throw error;
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({ name: profileData.name })
+        .eq("id", user?.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Profiel bijgewerkt",
+        description: "Uw profielgegevens zijn succesvol opgeslagen.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fout",
+        description: error.message || "Kon profiel niet opslaan.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveSecurity = async () => {
+    try {
+      await saveUserPreferences({
+        two_factor_enabled: security.twoFactor,
+        session_timeout_minutes: parseInt(security.sessionTimeout),
+      });
+
+      toast({
+        title: "Beveiligingsinstellingen bijgewerkt",
+        description: "Uw beveiligingsinstellingen zijn opgeslagen.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fout",
+        description: error.message || "Kon beveiligingsinstellingen niet opslaan.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Handle theme change
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
-    toast({
-      title: "Thema bijgewerkt",
-      description: "Uw thema is opgeslagen.",
-    });
+  const handleThemeChange = async (newTheme: string) => {
+    try {
+      setTheme(newTheme);
+      await saveUserPreferences({ theme: newTheme });
+      toast({
+        title: "Thema bijgewerkt",
+        description: "Uw thema is opgeslagen.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fout",
+        description: error.message || "Kon thema niet opslaan.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Prevent hydration mismatch
@@ -167,43 +268,83 @@ const SettingsView = () => {
               <Shield className="w-5 h-5 text-primary" />
               <h2 className="font-display font-semibold text-foreground">Beveiliging</h2>
             </div>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Twee-factor authenticatie</Label>
-                  <p className="text-sm text-muted-foreground">Voeg een extra beveiligingslaag toe aan uw account</p>
+            {loadingPreferences ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Beveiligingsinstellingen laden...</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Twee-factor authenticatie</Label>
+                    <p className="text-sm text-muted-foreground">Voeg een extra beveiligingslaag toe aan uw account</p>
+                  </div>
+                  <Switch
+                    checked={security.twoFactor}
+                    onCheckedChange={async (checked) => {
+                      const previousValue = security.twoFactor;
+                      setSecurity({ ...security, twoFactor: checked });
+                      try {
+                        await saveUserPreferences({ two_factor_enabled: checked });
+                        toast({
+                          title: "Instelling opgeslagen",
+                          description: "Twee-factor authenticatie is bijgewerkt.",
+                        });
+                      } catch (error: any) {
+                        setSecurity({ ...security, twoFactor: previousValue });
+                        toast({
+                          title: "Fout",
+                          description: error.message || "Kon instelling niet opslaan.",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                  />
                 </div>
-                <Switch
-                  checked={security.twoFactor}
-                  onCheckedChange={(checked) => setSecurity({ ...security, twoFactor: checked })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="session-timeout">Sessie timeout (minuten)</Label>
-                <Select
-                  value={security.sessionTimeout}
-                  onValueChange={(value) => setSecurity({ ...security, sessionTimeout: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 minuten</SelectItem>
-                    <SelectItem value="30">30 minuten</SelectItem>
-                    <SelectItem value="60">1 uur</SelectItem>
-                    <SelectItem value="120">2 uur</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="pt-4 border-t">
-                <Button variant="outline" className="w-full">
-                  Wachtwoord wijzigen
+                <div className="space-y-2">
+                  <Label htmlFor="session-timeout">Sessie timeout (minuten)</Label>
+                  <Select
+                    value={security.sessionTimeout}
+                    onValueChange={async (value) => {
+                      const previousValue = security.sessionTimeout;
+                      setSecurity({ ...security, sessionTimeout: value });
+                      try {
+                        await saveUserPreferences({ session_timeout_minutes: parseInt(value) });
+                        toast({
+                          title: "Instelling opgeslagen",
+                          description: "Sessie timeout is bijgewerkt.",
+                        });
+                      } catch (error: any) {
+                        setSecurity({ ...security, sessionTimeout: previousValue });
+                        toast({
+                          title: "Fout",
+                          description: error.message || "Kon instelling niet opslaan.",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="15">15 minuten</SelectItem>
+                      <SelectItem value="30">30 minuten</SelectItem>
+                      <SelectItem value="60">1 uur</SelectItem>
+                      <SelectItem value="120">2 uur</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="pt-4 border-t">
+                  <Button variant="outline" className="w-full">
+                    Wachtwoord wijzigen
+                  </Button>
+                </div>
+                <Button variant="hero" onClick={handleSaveSecurity}>
+                  Opslaan
                 </Button>
               </div>
-              <Button variant="hero" onClick={handleSaveSecurity}>
-                Opslaan
-              </Button>
-            </div>
+            )}
           </div>
         </TabsContent>
 
@@ -214,41 +355,47 @@ const SettingsView = () => {
               <Globe className="w-5 h-5 text-primary" />
               <h2 className="font-display font-semibold text-foreground">Voorkeuren</h2>
             </div>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="theme">Thema</Label>
-                {mounted && (
-                  <Select
-                    value={theme || "system"}
-                    onValueChange={handleThemeChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="system">
-                        <div className="flex items-center gap-2">
-                          <Monitor className="w-4 h-4" />
-                          Systeem
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="light">
-                        <div className="flex items-center gap-2">
-                          <Sun className="w-4 h-4" />
-                          Licht
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="dark">
-                        <div className="flex items-center gap-2">
-                          <Moon className="w-4 h-4" />
-                          Donker
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+            {loadingPreferences ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Voorkeuren laden...</p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="theme">Thema</Label>
+                  {mounted && (
+                    <Select
+                      value={theme || "system"}
+                      onValueChange={handleThemeChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="system">
+                          <div className="flex items-center gap-2">
+                            <Monitor className="w-4 h-4" />
+                            Systeem
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="light">
+                          <div className="flex items-center gap-2">
+                            <Sun className="w-4 h-4" />
+                            Licht
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="dark">
+                          <div className="flex items-center gap-2">
+                            <Moon className="w-4 h-4" />
+                            Donker
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
