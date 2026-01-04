@@ -58,7 +58,6 @@ services:
       - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
       # N8N Webhook (optional)
       - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
-      - NEXT_PUBLIC_N8N_WEBHOOK_URL=${NEXT_PUBLIC_N8N_WEBHOOK_URL}
       # Site URL - Update with your production domain
       - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     depends_on:
