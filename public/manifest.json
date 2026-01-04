@@ -4,8 +4,8 @@
   "description": "Intelligente technische assistent voor industriële machines",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#e67e5f",
+  "background_color": "#1a1d26",
+  "theme_color": "#1a1d26",
   "orientation": "portrait-primary",
   "icons": [
     {

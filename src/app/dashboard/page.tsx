@@ -727,7 +727,36 @@ export default function DashboardPage() {
                       }`}
                     >
                       {message.role === "assistant" ? (
-                        <MarkdownMessage content={message.content} />
+                        message.content ? (
+                          <MarkdownMessage content={message.content} />
+                        ) : (
+                          <div className="flex items-center gap-1.5 py-1">
+                            <span className="text-muted-foreground text-base md:text-sm">Denken</span>
+                            <div className="flex gap-1 items-center">
+                              <span 
+                                className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block"
+                                style={{
+                                  animation: 'typing 1.4s infinite',
+                                  animationDelay: '0s'
+                                } as React.CSSProperties}
+                              />
+                              <span 
+                                className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block"
+                                style={{
+                                  animation: 'typing 1.4s infinite',
+                                  animationDelay: '0.2s'
+                                } as React.CSSProperties}
+                              />
+                              <span 
+                                className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block"
+                                style={{
+                                  animation: 'typing 1.4s infinite',
+                                  animationDelay: '0.4s'
+                                } as React.CSSProperties}
+                              />
+                            </div>
+                          </div>
+                        )
                       ) : (
                         <p className="text-base md:text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
                       )}
