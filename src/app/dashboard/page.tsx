@@ -713,7 +713,7 @@ export default function DashboardPage() {
                       {message.role === "assistant" ? (
                         <MarkdownMessage content={message.content} />
                       ) : (
-                        <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-base md:text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
                       )}
                     </div>
                     {message.role === "assistant" && message.id !== "welcome" && (
@@ -735,7 +735,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Input - Fixed on mobile, sticky on desktop */}
-              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background border-t border-border/30 px-4 pt-4 pb-6 lg:p-4 flex-shrink-0 z-20">
+              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background lg:bg-transparent border-t border-border/30 px-4 pt-4 pb-6 lg:p-4 flex-shrink-0 z-20">
                 <div className="flex items-center gap-3 w-full lg:max-w-4xl lg:mx-auto">
                   <Input
                     value={inputValue}

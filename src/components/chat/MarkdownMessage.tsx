@@ -8,7 +8,7 @@ interface MarkdownMessageProps {
 
 export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProps) => {
   return (
-    <div className={`prose prose-sm dark:prose-invert max-w-none 
+    <div className={`prose prose-base md:prose-sm dark:prose-invert max-w-none 
       prose-headings:text-foreground 
       prose-p:text-foreground/90 
       prose-strong:text-foreground 
@@ -92,7 +92,7 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
           ),
           // Paragraphs
           p: ({ children }) => (
-            <p className="text-foreground/90 mb-3 leading-relaxed">{children}</p>
+            <p className="text-base md:text-sm text-foreground/90 mb-3 leading-relaxed">{children}</p>
           ),
           // Blockquotes
           blockquote: ({ children }) => (
