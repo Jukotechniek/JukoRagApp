@@ -346,10 +346,7 @@ export default function DashboardPage() {
 
         aiResponse = chatResponse.response || 'Sorry, ik kon geen antwoord genereren.';
 
-        // Log metadata if available
-        if (chatResponse.metadata) {
-          console.log('[Chat] Metadata:', chatResponse.metadata);
-        }
+       
 
         // Token usage is already tracked by the API route
         // The API route handles token tracking internally
