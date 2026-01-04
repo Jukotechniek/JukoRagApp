@@ -21,8 +21,11 @@ export async function processDocumentForRAG(
       throw new Error("Missing authorization header");
     }
     
-    // Use Python API for document processing (better PDF/DOCX support)
-    const pythonApiUrl = process.env.NEXT_PUBLIC_PYTHON_API_URL || 'http://localhost:8000';
+    // Use Next.js API route as proxy to Python API (works in both dev and production)
+    // The Next.js API route will forward to the Python API internally
+    const apiUrl = typeof window !== 'undefined' 
+      ? `${window.location.origin}/api/process-document`
+      : (process.env.PYTHON_API_URL || 'http://python-api:8000') + '/api/process-document';
     
     console.log(`Calling Python API for document processing: ${documentId}`);
     
@@ -31,7 +34,7 @@ export async function processDocumentForRAG(
     const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 minutes
     
     try {
-      const response = await fetch(`${pythonApiUrl}/api/process-document`, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

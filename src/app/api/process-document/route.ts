@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('Authorization');
     
     // Forward request to Python API
-    const response = await fetch(`${PYTHON_API_URL}/api/chat`, {
+    const response = await fetch(`${PYTHON_API_URL}/api/process-document`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,17 +46,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
