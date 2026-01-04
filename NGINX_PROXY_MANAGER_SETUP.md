@@ -68,10 +68,54 @@ Zorg dat `src/middleware.ts` op je server staat en actief is. Deze zorgt voor:
 
 ## Troubleshooting
 
+### `app.jukobot.nl` werkt niet / ERR_CONNECTION_TIMED_OUT
+
+**Probleem:** Je krijgt een timeout error bij `app.jukobot.nl`
+
+**Oplossingen:**
+
+1. **Check of de Proxy Host bestaat:**
+   - Ga naar Nginx Proxy Manager
+   - Check of `app.jukobot.nl` in de lijst staat
+   - Status moet "Online" zijn
+
+2. **Check DNS:**
+   ```bash
+   # Test of DNS correct is
+   nslookup app.jukobot.nl
+   # Moet je server IP teruggeven
+   ```
+
+3. **Check Proxy Host configuratie:**
+   - **Domain Names:** Moet exact `app.jukobot.nl` zijn (geen www)
+   - **Forward Hostname/IP:** `45.9.191.219` (of container naam)
+   - **Forward Port:** `3000`
+   - **Websockets Support:** ✅ AAN
+
+4. **Check SSL certificaat:**
+   - Ga naar SSL Tab van de proxy host
+   - Zorg dat er een certificaat is toegewezen
+   - Als er geen is: "Request a new SSL Certificate"
+
+5. **Test directe verbinding:**
+   ```bash
+   # Test of Next.js container bereikbaar is
+   curl http://45.9.191.219:3000
+   # Of als je SSH toegang hebt:
+   curl http://localhost:3000
+   ```
+
+6. **Check container status:**
+   ```bash
+   docker compose ps
+   # nextjs-frontend moet "Up" zijn
+   ```
+
 ### Redirects werken niet
 - Check of `middleware.ts` correct is geüpload naar de server
 - Check browser console voor errors
 - Verify dat beide proxy hosts actief zijn (Status: Online)
+- **BELANGRIJK:** Gebruik NOOIT `:3000` in de URL - gebruik alleen `jukobot.nl` of `app.jukobot.nl`
 
 ### SSL certificaat problemen
 - In Nginx Proxy Manager: SSL Tab → "Request a new SSL Certificate"

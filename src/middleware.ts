@@ -21,7 +21,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Check if we're on the app subdomain
+  // Check if we're on the app subdomain (app.jukobot.nl or app.jukotechniek.nl)
   const isAppSubdomain = hostname.startsWith('app.');
   
   // Check if we're on the main domain
@@ -40,12 +40,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
   
-  // If on app subdomain and trying to access landing page, redirect to main domain
+  // If on app subdomain and trying to access root, redirect to /auth
   if (isAppSubdomain && pathname === '/') {
     const url = request.nextUrl.clone();
-    const mainDomain = hostname.replace('app.', '').replace('www.', '');
-    url.protocol = request.nextUrl.protocol;
-    url.host = mainDomain;
+    url.pathname = '/auth';
     return NextResponse.redirect(url);
   }
   
