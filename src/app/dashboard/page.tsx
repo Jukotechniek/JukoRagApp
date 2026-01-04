@@ -26,7 +26,6 @@ import {
   Flag,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import OrganizationsView from "@/components/dashboard/OrganizationsView";
 import { getHomeUrl } from "@/lib/url-utils";
 import UsersView from "@/components/dashboard/UsersView";
