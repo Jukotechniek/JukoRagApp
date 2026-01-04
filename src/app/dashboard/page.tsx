@@ -28,6 +28,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import OrganizationsView from "@/components/dashboard/OrganizationsView";
+import { getHomeUrl } from "@/lib/url-utils";
 import UsersView from "@/components/dashboard/UsersView";
 import AnalyticsView from "@/components/dashboard/AnalyticsView";
 import DocumentsView from "@/components/dashboard/DocumentsView";
@@ -60,6 +61,7 @@ export default function DashboardPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const [techniciansCanViewDocuments, setTechniciansCanViewDocuments] = useState(false);
+  const [homeUrl, setHomeUrl] = useState('/');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Check for invite hash fragments - if present, redirect to auth to set password
@@ -76,6 +78,11 @@ export default function DashboardPage() {
       }
     }
   }, [router]);
+
+  // Set home URL for logo link
+  useEffect(() => {
+    setHomeUrl(getHomeUrl());
+  }, []);
 
   // Redirect naar login als niet ingelogd
   // Check both user and supabaseUser - if we have supabaseUser but not user yet,
@@ -546,14 +553,14 @@ export default function DashboardPage() {
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-4 border-b border-border/30">
-            <Link href="/" className="flex items-center gap-2">
+            <a href={homeUrl} className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-[hsl(15_80%_55%)] flex items-center justify-center">
                 <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
               <span className="font-display text-xl font-bold text-foreground">
                 Tech<span className="text-gradient">RAG</span>
               </span>
-            </Link>
+            </a>
           </div>
 
           {/* Navigation */}

@@ -21,7 +21,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Check if we're on the app subdomain (app.jukobot.nl or app.jukotechniek.nl)
+  // Check if we're on the app subdomain (app.jukobot.nl)
   const isAppSubdomain = hostname.startsWith('app.');
   
   // Check if we're on the main domain

@@ -10,6 +10,7 @@ import { Bot, ArrowLeft, Mail, Lock, User, Building } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { getHomeUrl } from "@/lib/url-utils";
 
 function AuthPageContent() {
   const searchParams = useSearchParams();
@@ -17,6 +18,7 @@ function AuthPageContent() {
   const { toast } = useToast();
   // Always in login mode - registration disabled
   const [isLogin, setIsLogin] = useState(true);
+  const [homeUrl, setHomeUrl] = useState('/');
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
 
@@ -28,6 +30,9 @@ function AuthPageContent() {
   });
 
   useEffect(() => {
+    // Set home URL for back link
+    setHomeUrl(getHomeUrl());
+    
     // Redirect to login if someone tries to register
     if (!searchParams) return;
     if (searchParams.get("mode") === "register") {
@@ -251,13 +256,13 @@ function AuthPageContent() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           {/* Back Link */}
-          <Link
-            href="/"
+          <a
+            href={homeUrl}
             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
             Terug naar home
-          </Link>
+          </a>
 
           {/* Logo */}
           <div className="flex items-center gap-2 mb-8">
