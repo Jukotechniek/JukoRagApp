@@ -613,9 +613,9 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen">
-        {/* Mobile Header */}
-        <header className="lg:hidden flex items-center justify-between p-4 border-b border-border/30 glass">
+      <main className="flex-1 flex flex-col min-h-screen relative">
+        {/* Mobile Header - Sticky */}
+        <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 glass bg-background">
           <button onClick={() => setSidebarOpen(true)} className="p-2">
             <Menu className="w-6 h-6" />
           </button>
@@ -654,7 +654,7 @@ export default function DashboardPage() {
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
           {activeTab === "chat" && (
             <div className="h-full flex flex-col w-full lg:max-w-4xl lg:mx-auto lg:p-8">
               {/* Chat Header - Hidden on mobile, visible on desktop */}
@@ -692,13 +692,9 @@ export default function DashboardPage() {
                 </Button>
               </div>
 
-              {/* Messages - Scrollable container */}
+              {/* Messages - Scrollable container with padding for fixed input */}
               <div 
-                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0"
-                style={{ 
-                  maxHeight: 'calc(100vh - 180px)',
-                  paddingBottom: '1rem'
-                }}
+                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0 pb-24 lg:pb-4"
               >
                 {messages.map((message) => (
                   <div
@@ -738,9 +734,9 @@ export default function DashboardPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input - Always visible at bottom, sticky on mobile */}
-              <div className="sticky bottom-0 bg-background border-t border-border/30 p-4 flex-shrink-0 z-10">
-                <div className="flex items-center gap-3 max-w-4xl mx-auto w-full">
+              {/* Input - Fixed on mobile, sticky on desktop */}
+              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background border-t border-border/30 p-4 flex-shrink-0 z-20">
+                <div className="flex items-center gap-3 w-full lg:max-w-4xl lg:mx-auto">
                   <Input
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
