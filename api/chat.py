@@ -305,12 +305,33 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
         duration = (time.time() - start_time) * 1000
         
         if retrieve_span:
+            # Extract document information for tracking
+            retrieved_doc_info = []
+            unique_doc_ids = set()
+            for doc in retrieved_docs:
+                doc_id = doc.metadata.get("document_id")
+                if doc_id:
+                    unique_doc_ids.add(doc_id)
+                retrieved_doc_info.append({
+                    "document_id": doc_id,
+                    "source": doc.metadata.get("source", "Unknown"),
+                    "page": doc.metadata.get("page", doc.metadata.get("page_number_footer", "N/A")),
+                    "content_length": len(doc.page_content),
+                    "similarity": doc.metadata.get("similarity")  # Only for semantic results
+                })
+            
             retrieve_span.update(
                 output={
                     "retrieved_text_length": len(serialized),
-                    "documents_count": len(retrieved_docs)
+                    "documents_count": len(retrieved_docs),
+                    "unique_documents": len(unique_doc_ids),
+                    "retrieved_documents": retrieved_doc_info  # Full document details
                 },
-                metadata={"duration_ms": duration}
+                metadata={
+                    "duration_ms": duration,
+                    "document_ids": list(unique_doc_ids),  # For easy filtering
+                    "document_names": [doc["source"] for doc in retrieved_doc_info]  # Document names list
+                }
             )
             retrieve_span.end()
         
@@ -365,19 +386,25 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
         self.trace_context = trace_context
         self.current_generation = None
         self.start_time = None
+        self.model_name = None
     
     def on_llm_start(self, serialized, prompts, **kwargs):
         if self.trace and langfuse_client and self.trace_context:
             self.start_time = time.time()
+            # Extract model name - can be in different places
+            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or "gpt-4o"
+            self.model_name = model_name
+            
             self.current_generation = langfuse_client.start_observation(
                 name="llm_call",
                 as_type="generation",
-                model=serialized.get("name", "gpt-4o"),
+                model=model_name,
                 input=prompts[0] if prompts else "",
                 trace_context=self.trace_context,
                 metadata={
-                    "model": serialized.get("name", "gpt-4o"),
+                    "model": model_name,
                     "temperature": kwargs.get("temperature", 0),
+                    "model_type": serialized.get("_type", "chat_model"),
                 }
             )
     
@@ -386,14 +413,29 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
             duration = (time.time() - self.start_time) * 1000 if self.start_time else 0
             output_text = response.generations[0][0].text if response.generations else ""
             
+            # Extract token usage - can be in different formats
             usage = None
+            token_usage_metadata = {}
+            
             if hasattr(response, 'llm_output') and response.llm_output:
                 usage = response.llm_output.get('token_usage')
+                # Also store in metadata for easier viewing
+                if usage:
+                    token_usage_metadata = {
+                        "prompt_tokens": usage.get("prompt_tokens"),
+                        "completion_tokens": usage.get("completion_tokens"),
+                        "total_tokens": usage.get("total_tokens"),
+                    }
             
             self.current_generation.update(
                 output=output_text,
-                usage=usage,
-                metadata={"duration_ms": duration}
+                usage=usage,  # Langfuse native token usage
+                metadata={
+                    "duration_ms": duration,
+                    "model": self.model_name or "unknown",
+                    **token_usage_metadata,  # Also in metadata for easy filtering
+                    "output_length": len(output_text),
+                }
             )
             self.current_generation.end()
             self.current_generation = None
@@ -402,7 +444,11 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
         if self.current_generation and self.trace:
             self.current_generation.update(
                 output={"error": str(error)},
-                level="ERROR"
+                level="ERROR",
+                metadata={
+                    "model": self.model_name or "unknown",
+                    "error_type": type(error).__name__
+                }
             )
             self.current_generation.end()
             self.current_generation = None
@@ -509,6 +555,8 @@ async def chat_endpoint(
                     "question": request.question,
                     "question_length": len(request.question),
                     "user_id": request.userId,
+                    "model": "gpt-4.1",  # Add model info to trace
+                    "embedding_model": "text-embedding-3-small",  # Embedding model used
                 }
             )
         
@@ -576,7 +624,10 @@ async def chat_endpoint(
                     "output": ai_message,
                     "output_length": len(ai_message),
                 },
-                metadata={"duration_ms": agent_duration}
+                metadata={
+                    "duration_ms": agent_duration,
+                    "model": "gpt-4.1",  # Model used for agent
+                }
             )
             agent_span.end()
         
