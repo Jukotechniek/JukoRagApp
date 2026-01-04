@@ -780,10 +780,10 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full overflow-x-hidden">
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 sm:mb-6">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
             Documenten
           </h1>
@@ -792,7 +792,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           </p>
         </div>
         {canEdit && (
-          <Button variant="hero" size="sm" className="w-full sm:w-auto" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="hero" size="sm" className="w-full sm:w-auto flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 mr-2" />
             Uploaden
           </Button>
@@ -800,20 +800,20 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       </div>
 
       {/* Search */}
-      <div className="relative mb-4 sm:mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="relative mb-4 sm:mb-6 w-full">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Zoek documenten..."
-          className="pl-10"
+          className="pl-10 w-full"
         />
       </div>
 
       {/* Upload Area - Only show if user can edit */}
       {canEdit && (
         <div
-          className={`glass rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-4 sm:mb-6 border-dashed border-2 transition-colors cursor-pointer ${
+          className={`glass rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-4 sm:mb-6 border-dashed border-2 transition-colors cursor-pointer w-full max-w-full ${
             isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
           }`}
           onDragOver={handleDragOver}

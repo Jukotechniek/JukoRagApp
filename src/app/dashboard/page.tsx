@@ -817,7 +817,7 @@ export default function DashboardPage() {
           )}
 
           {activeTab === "documents" && (
-            <div className="p-4 lg:p-8">
+            <div className="p-4 lg:p-8 w-full max-w-full overflow-x-hidden">
               <DocumentsView selectedOrganizationId={effectiveOrgId} />
             </div>
           )}
