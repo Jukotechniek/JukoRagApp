@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { BarChart, TrendingUp, MessageSquare, FileText, Users, Clock, Calendar, Download, CheckCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BarChart, TrendingUp, MessageSquare, FileText, Users, Clock, Calendar, CheckCircle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -14,7 +13,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { subWeeks, subMonths, format, startOfWeek, startOfMonth } from "date-fns";
@@ -37,7 +35,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
   });
   const [weeklyData, setWeeklyData] = useState<{ day: string; questions: number }[]>([]);
   const [topQuestions, setTopQuestions] = useState<{ question: string; count: number }[]>([]);
-  const { toast } = useToast();
 
   // Use selected organization ID or fall back to user's organization
   const effectiveOrgId = selectedOrganizationId || user?.organization_id || null;
@@ -286,14 +283,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
     return Math.max(...weeklyData.map((d) => d.questions), 1);
   }, [weeklyData]);
 
-  const handleExport = () => {
-    toast({
-      title: "Rapport exporteren",
-      description: "Het analytics rapport wordt voorbereid...",
-    });
-    // In productie zou hier een echte export functionaliteit komen
-  };
-
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -317,10 +306,6 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
               <SelectItem value="year">Dit jaar</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Exporteren
-          </Button>
         </div>
       </div>
 

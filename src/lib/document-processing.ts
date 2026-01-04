@@ -108,24 +108,8 @@ export async function processDocumentForRAG(
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);
     
-    // Provide more helpful error messages
+    // Provide helpful error messages
     const errorMessage = error.message || error.toString();
-    
-    if (errorMessage.includes('PDF') || errorMessage.includes('DOCX')) {
-      throw new Error(
-        `PDF/DOCX verwerking vereist een N8N webhook. ` +
-        `Configureer VITE_N8N_WEBHOOK_URL in je .env bestand, ` +
-        `of converteer het bestand eerst naar TXT formaat. ` +
-        `Originele error: ${errorMessage}`
-      );
-    }
-    
-    if (errorMessage.includes('N8N webhook')) {
-      throw new Error(
-        `N8N webhook error: ${errorMessage}. ` +
-        `Controleer of VITE_N8N_WEBHOOK_URL correct is geconfigureerd.`
-      );
-    }
     
     throw new Error(`Failed to process document: ${errorMessage}`);
   }

@@ -9,7 +9,7 @@ from chat import chat_endpoint, ChatRequest, ChatResponse
 from document_processing import process_document_endpoint, ProcessDocumentRequest, ProcessDocumentResponse
 
 # Create FastAPI app
-app = FastAPI(title="DocuBot Assistant API")
+app = FastAPI(title="Juk Assistant API")
 
 # CORS middleware - restrict to allowed origins
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")

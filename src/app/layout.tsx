@@ -3,7 +3,7 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DocuBot Assistant',
+  title: 'JukoBot Assistant',
   description: 'Intelligente technische assistent voor industriële machines',
 };
 

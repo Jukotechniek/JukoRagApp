@@ -4,7 +4,7 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: docubot-python-api
+    container_name: JukoBot-python-api
     ports:
       - "8000:8000"
     environment:
@@ -30,7 +30,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - docubot-network
+      - JukoBot-network
 
   # Next.js Frontend
   nextjs-frontend:
@@ -40,7 +40,7 @@ services:
       args:
         - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-    container_name: docubot-nextjs
+    container_name: JukoBot-nextjs
     ports:
       - "3000:3000"
     environment:
@@ -72,9 +72,9 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - docubot-network
+      - JukoBot-network
 
 networks:
-  docubot-network:
+  JukoBot-network:
     driver: bridge
 
