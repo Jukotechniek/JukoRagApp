@@ -382,16 +382,16 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 sm:mb-6">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground mb-2">Facturatie</h1>
-          <p className="text-muted-foreground">Beheer uw abonnement en facturen</p>
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground mb-1 sm:mb-2">Facturatie</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Beheer uw abonnement en facturen</p>
         </div>
         {user?.role === "admin" && availableOrganizations.length > 1 && !propSelectedOrgId && (
           <div className="flex items-center gap-2">
             <Building className="w-4 h-4 text-muted-foreground" />
             <Select value={selectedOrganizationId} onValueChange={setInternalSelectedOrganizationId}>
-              <SelectTrigger className="w-[250px]">
+              <SelectTrigger className="w-full sm:w-[250px]">
                 <SelectValue placeholder="Selecteer organisatie" />
               </SelectTrigger>
               <SelectContent>
@@ -407,7 +407,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
         {user?.role !== "admin" && selectedOrganization && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Building className="w-4 h-4" />
-            <span>{selectedOrganization.name}</span>
+            <span className="truncate">{selectedOrganization.name}</span>
           </div>
         )}
       </div>
@@ -415,33 +415,33 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
       {/* Current Plan */}
       {(selectedOrganization || selectedOrganizationId) ? (
         <>
-          <div className="glass rounded-2xl p-6 mb-6 border-primary/30">
-            <div className="flex items-start justify-between mb-4">
-              <div>
+          <div className="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border-primary/30">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+              <div className="flex-1">
                 {user?.role === "admin" && selectedOrganization && (
-                  <div className="flex items-center gap-2 mb-2 text-sm text-muted-foreground">
-                    <Building className="w-4 h-4" />
-                    <span>{selectedOrganization.name}</span>
+                  <div className="flex items-center gap-2 mb-2 text-xs sm:text-sm text-muted-foreground">
+                    <Building className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="truncate">{selectedOrganization.name}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h2 className="font-display text-xl font-semibold text-foreground">{currentPlan.name}</h2>
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary/20 text-primary">Actief</span>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                  <h2 className="font-display text-lg sm:text-xl font-semibold text-foreground">{currentPlan.name}</h2>
+                  <span className="px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium bg-primary/20 text-primary">Actief</span>
                 </div>
-                <p className="text-3xl font-bold text-foreground mb-1">
-                  {currentPlan.price} <span className="text-base text-muted-foreground">{currentPlan.period}</span>
+                <p className="text-2xl sm:text-3xl font-bold text-foreground mb-1">
+                  {currentPlan.price} <span className="text-sm sm:text-base text-muted-foreground">{currentPlan.period}</span>
                 </p>
               </div>
-              <Button variant="outline" onClick={() => setPaymentDialogOpen(true)}>
+              <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setPaymentDialogOpen(true)}>
                 <CreditCard className="w-4 h-4 mr-2" />
                 Betalingsmethode
               </Button>
             </div>
             <div className="grid sm:grid-cols-2 gap-2">
               {currentPlan.features.map((feature, index) => (
-                <div key={index} className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-green-500" />
+                <div key={index} className="flex items-start gap-2 text-xs sm:text-sm">
+                  <Check className="w-3 h-3 sm:w-4 sm:h-4 text-green-500 mt-0.5 flex-shrink-0" />
                   <span className="text-muted-foreground">{feature}</span>
                 </div>
               ))}
@@ -449,35 +449,36 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           </div>
 
           {/* Available Plans */}
-          <div className="mb-6">
-            <h2 className="font-display text-lg font-semibold text-foreground mb-4">
+          <div className="mb-4 sm:mb-6">
+            <h2 className="font-display text-base sm:text-lg font-semibold text-foreground mb-3 sm:mb-4">
               {user?.role === "admin" ? "Abonnement Wijzigen" : "Beschikbare Abonnementen"}
             </h2>
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
               {plans.map((plan) => (
                 <div
                   key={plan.id}
-                  className={`glass rounded-xl p-6 ${
+                  className={`glass rounded-lg sm:rounded-xl p-4 sm:p-6 ${
                     selectedOrganization?.plan === plan.id ? "border-2 border-primary" : "border border-border/30"
                   }`}
                 >
-                  <div className="mb-4">
-                    <h3 className="font-display font-semibold text-foreground mb-1">{plan.name}</h3>
-                    <p className="text-2xl font-bold text-foreground">
-                      {plan.price} {plan.period && <span className="text-sm text-muted-foreground">{plan.period}</span>}
+                  <div className="mb-3 sm:mb-4">
+                    <h3 className="font-display text-base sm:text-lg font-semibold text-foreground mb-1">{plan.name}</h3>
+                    <p className="text-xl sm:text-2xl font-bold text-foreground">
+                      {plan.price} {plan.period && <span className="text-xs sm:text-sm text-muted-foreground">{plan.period}</span>}
                     </p>
                   </div>
-                  <ul className="space-y-2 mb-4">
+                  <ul className="space-y-1.5 sm:space-y-2 mb-3 sm:mb-4">
                     {plan.features.map((feature, index) => (
-                      <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                      <li key={index} className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground">
+                        <Check className="w-3 h-3 sm:w-4 sm:h-4 text-primary mt-0.5 flex-shrink-0" />
                         <span>{feature}</span>
                       </li>
                     ))}
                   </ul>
                   <Button
                     variant={selectedOrganization?.plan === plan.id ? "outline" : "hero"}
-                    className="w-full"
+                    size="sm"
+                    className="w-full text-xs sm:text-sm"
                     disabled={selectedOrganization?.plan === plan.id}
                     onClick={() => handlePlanChange(plan.id as "starter" | "professional" | "enterprise")}
                   >
@@ -495,66 +496,72 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           </div>
         </>
       ) : (
-        <div className="glass rounded-xl p-8 text-center">
-          <Building className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">Selecteer een organisatie om facturatie te bekijken</p>
+        <div className="glass rounded-xl p-6 sm:p-8 text-center">
+          <Building className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+          <p className="text-sm sm:text-base text-muted-foreground">Selecteer een organisatie om facturatie te bekijken</p>
         </div>
       )}
 
       {/* Invoices - Always show if we have an organization */}
       {(selectedOrganization || selectedOrganizationId) && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-lg font-semibold text-foreground">Facturen</h2>
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="font-display text-base sm:text-lg font-semibold text-foreground">Facturen</h2>
+            <span className="text-xs sm:text-sm text-muted-foreground">
               {currentInvoices.length} factuur{currentInvoices.length !== 1 ? "en" : ""}
             </span>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {loading && currentInvoices.length === 0 ? (
-              <div className="glass rounded-xl p-8 text-center">
-                <p className="text-muted-foreground">Facturen laden...</p>
+              <div className="glass rounded-xl p-6 sm:p-8 text-center">
+                <p className="text-sm sm:text-base text-muted-foreground">Facturen laden...</p>
               </div>
             ) : currentInvoices.length === 0 ? (
-              <div className="glass rounded-xl p-8 text-center">
-                <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground mb-2">Geen facturen gevonden voor deze organisatie</p>
-                <p className="text-sm text-muted-foreground">
+              <div className="glass rounded-xl p-6 sm:p-8 text-center">
+                <Calendar className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+                <p className="text-sm sm:text-base text-muted-foreground mb-2">Geen facturen gevonden voor deze organisatie</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Facturen worden automatisch aangemaakt wanneer een abonnement wordt geactiveerd.
                 </p>
               </div>
             ) : (
               currentInvoices.map((invoice) => (
-                <div key={invoice.id} className="glass rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-muted-foreground" />
+                <div key={invoice.id} className="glass rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="flex items-start justify-between gap-3 sm:gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                        <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm sm:text-base text-foreground truncate">{invoice.id}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{invoice.date}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1 sm:hidden">{invoice.plan}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">{invoice.id}</p>
-                      <p className="text-sm text-muted-foreground">{invoice.date}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="font-semibold text-foreground">{invoice.amount}</p>
-                      <p className="text-sm text-muted-foreground">{invoice.plan}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          invoice.status === "paid"
-                            ? "bg-green-500/20 text-green-500"
-                            : invoice.status === "pending"
-                              ? "bg-yellow-500/20 text-yellow-500"
-                              : "bg-red-500/20 text-red-500"
-                        }`}
-                      >
-                        {invoice.status === "paid" ? "Betaald" : invoice.status === "pending" ? "Openstaand" : "Verlopen"}
-                      </span>
-                      <Button variant="ghost" size="icon">
-                        <Download className="w-4 h-4" />
-                      </Button>
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4 flex-shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <p className="font-semibold text-foreground">{invoice.amount}</p>
+                        <p className="text-sm text-muted-foreground">{invoice.plan}</p>
+                      </div>
+                      <div className="text-right sm:text-left sm:hidden">
+                        <p className="font-semibold text-sm text-foreground">{invoice.amount}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-1 rounded-full text-[10px] sm:text-xs font-medium whitespace-nowrap ${
+                            invoice.status === "paid"
+                              ? "bg-green-500/20 text-green-500"
+                              : invoice.status === "pending"
+                                ? "bg-yellow-500/20 text-yellow-500"
+                                : "bg-red-500/20 text-red-500"
+                          }`}
+                        >
+                          {invoice.status === "paid" ? "Betaald" : invoice.status === "pending" ? "Openstaand" : "Verlopen"}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10">
+                          <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

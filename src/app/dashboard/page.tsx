@@ -694,7 +694,7 @@ export default function DashboardPage() {
 
               {/* Messages - Scrollable container with padding for fixed input */}
               <div 
-                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0 pb-24 lg:pb-4"
+                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0 pb-28 lg:pb-4"
               >
                 {messages.map((message) => (
                   <div
@@ -707,7 +707,7 @@ export default function DashboardPage() {
                       className={`max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-3 ${
                         message.role === "user"
                           ? "bg-primary/20 rounded-br-md"
-                          : "glass rounded-bl-md"
+                          : "bg-card/80 dark:bg-card/90 backdrop-blur-sm border border-border/30 rounded-bl-md"
                       }`}
                     >
                       {message.role === "assistant" ? (
@@ -735,14 +735,14 @@ export default function DashboardPage() {
               </div>
 
               {/* Input - Fixed on mobile, sticky on desktop */}
-              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background border-t border-border/30 p-4 flex-shrink-0 z-20">
+              <div className="fixed lg:sticky bottom-0 left-0 right-0 lg:left-auto lg:right-auto bg-background border-t border-border/30 px-4 pt-4 pb-6 lg:p-4 flex-shrink-0 z-20">
                 <div className="flex items-center gap-3 w-full lg:max-w-4xl lg:mx-auto">
                   <Input
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                     placeholder="Stel een vraag..."
-                    className="flex-1"
+                    className="flex-1 text-base lg:text-sm"
                   />
                   <Button variant="hero" size="icon" onClick={handleSendMessage} disabled={isSending || !inputValue.trim()}>
                     <Send className="w-4 h-4" />

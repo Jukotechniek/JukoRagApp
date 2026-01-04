@@ -64,6 +64,7 @@ const CircularProgress = ({ value, size = 40, strokeWidth = 4 }: { value: number
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - (value / 100) * circumference;
+  const textSize = size <= 32 ? 'text-[10px]' : 'text-xs';
 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
@@ -94,7 +95,7 @@ const CircularProgress = ({ value, size = 40, strokeWidth = 4 }: { value: number
           className="text-primary transition-all duration-300"
         />
       </svg>
-      <span className="absolute text-xs font-medium text-foreground">
+      <span className={`absolute ${textSize} font-medium text-foreground`}>
         {Math.round(value)}%
       </span>
     </div>
@@ -781,26 +782,25 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   return (
     <div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 sm:mb-6">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground">
             Documenten
           </h1>
-          <p className="text-muted-foreground">
-            {documents.length} documenten in jouw organisatie
-            {isReadOnly && " (Alleen bekijken)"}
+          <p className="text-sm sm:text-base text-muted-foreground">
+            {documents.length} documenten{isReadOnly && " (Alleen bekijken)"}
           </p>
         </div>
         {canEdit && (
-          <Button variant="hero" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="hero" size="sm" className="w-full sm:w-auto" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 mr-2" />
-            Document Uploaden
+            Uploaden
           </Button>
         )}
       </div>
 
       {/* Search */}
-      <div className="relative mb-6">
+      <div className="relative mb-4 sm:mb-6">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           value={searchQuery}
@@ -813,7 +813,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       {/* Upload Area - Only show if user can edit */}
       {canEdit && (
         <div
-          className={`glass rounded-2xl p-8 mb-6 border-dashed border-2 transition-colors cursor-pointer ${
+          className={`glass rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-4 sm:mb-6 border-dashed border-2 transition-colors cursor-pointer ${
             isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
           }`}
           onDragOver={handleDragOver}
@@ -830,24 +830,27 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           onChange={(e) => handleFileSelect(e.target.files)}
         />
         <div className="flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-            <Upload className="w-7 h-7 text-primary" />
+          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-primary/10 flex items-center justify-center mb-3 sm:mb-4">
+            <Upload className="w-5 h-5 sm:w-7 sm:h-7 text-primary" />
           </div>
-          <h3 className="font-display font-semibold text-foreground mb-1">
+          <h3 className="font-display text-sm sm:text-base font-semibold text-foreground mb-1">
             Sleep bestanden hierheen
           </h3>
-          <p className="text-sm text-muted-foreground mb-3">
+          <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3">
             of klik om te bladeren
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf) • Max. 20MB
+          </p>
+          <p className="text-xs text-muted-foreground sm:hidden">
+            PDF, Word, Excel, TXT • Max. 20MB
           </p>
         </div>
         </div>
       )}
 
       {/* Documents List */}
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3">
         {/* Show uploading files at the top - only if not already in documents list */}
         {uploadingFiles
           .filter((uploadingFile) => !filteredDocuments.some((doc) => doc.name === uploadingFile.name))
@@ -856,36 +859,36 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             return (
               <div
                 key={`uploading-${uploadingFile.name}`}
-                className="glass rounded-xl p-4 flex items-center gap-4 border-primary/30"
+                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center gap-3 sm:gap-4 border-primary/30"
               >
-                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                  <Upload className="w-5 h-5 text-primary animate-pulse" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                  <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-primary animate-pulse" />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-foreground truncate">{uploadingFile.name}</h4>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <h4 className="font-medium text-sm sm:text-base text-foreground truncate">{uploadingFile.name}</h4>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
                     <span>{uploadingFile.size}</span>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span>Uploaden...</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <CircularProgress value={progress} size={40} />
+                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                  <CircularProgress value={progress} size={32} strokeWidth={3} />
                 </div>
               </div>
             );
           })}
 
         {loading ? (
-          <div className="glass rounded-xl p-8 text-center">
-            <p className="text-muted-foreground">Documenten laden...</p>
+          <div className="glass rounded-xl p-6 sm:p-8 text-center">
+            <p className="text-sm sm:text-base text-muted-foreground">Documenten laden...</p>
           </div>
         ) : filteredDocuments.length === 0 && uploadingFiles.length === 0 ? (
-          <div className="glass rounded-xl p-8 text-center">
-            <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">Geen documenten gevonden</p>
+          <div className="glass rounded-xl p-6 sm:p-8 text-center">
+            <FileText className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+            <p className="text-sm sm:text-base text-muted-foreground">Geen documenten gevonden</p>
           </div>
         ) : (
           filteredDocuments.map((doc) => {
@@ -893,81 +896,85 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             return (
               <div
                 key={doc.id}
-                className="glass rounded-xl p-4 flex items-center gap-4 hover:border-primary/30 transition-colors"
+                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 hover:border-primary/30 transition-colors"
               >
-                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                  <IconComponent className={`w-5 h-5 ${typeColors[doc.type]}`} />
-                </div>
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                    <IconComponent className={`w-4 h-4 sm:w-5 sm:h-5 ${typeColors[doc.type]}`} />
+                  </div>
 
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-foreground truncate">{doc.name}</h4>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>{doc.size}</span>
-                    <span>•</span>
-                    <span>{doc.uploadedAt}</span>
-                    <span>•</span>
-                    <span>{doc.uploadedBy}</span>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm sm:text-base text-foreground truncate mb-1">{doc.name}</h4>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-0">
+                      <span>{doc.size}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span className="hidden sm:inline">{doc.uploadedAt}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span className="hidden sm:inline">{doc.uploadedBy}</span>
+                      {/* Mobile: show only date and name on separate lines */}
+                      <span className="sm:hidden block w-full text-xs mt-1">{doc.uploadedAt}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                    {/* Show upload progress if uploading */}
+                    {uploadProgress[doc.name] !== undefined && (
+                      <CircularProgress value={uploadProgress[doc.name]} size={32} strokeWidth={3} />
+                    )}
+                    
+                    {/* Show RAG processing indicator */}
+                    {ragProcessingProgress[doc.id] && !uploadProgress[doc.name] && (
+                      <div className="relative inline-flex items-center justify-center" style={{ width: 32, height: 32 }}>
+                        <div className="absolute inset-0 border-2 border-blue-500/30 rounded-full" />
+                        <div 
+                          className="absolute inset-0 border-2 border-blue-500 rounded-full animate-spin"
+                          style={{
+                            borderTopColor: 'transparent',
+                            borderRightColor: 'transparent',
+                          }}
+                        />
+                        <FileText className="w-3 h-3 text-blue-500" />
+                      </div>
+                    )}
+                    
+                    {canEdit && (
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <Label htmlFor={`rag-${doc.id}`} className="text-xs sm:text-sm text-muted-foreground cursor-pointer hidden sm:block">
+                          RAG
+                        </Label>
+                        <Switch
+                          id={`rag-${doc.id}`}
+                          checked={doc.use_for_rag}
+                          onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
+                          disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
+                        />
+                      </div>
+                    )}
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="p-1.5 sm:p-2 hover:bg-secondary rounded-lg transition-colors">
+                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleDownload(doc)}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Downloaden
+                        </DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(doc)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Verwijderen
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3">
-                  {/* Show upload progress if uploading */}
-                  {uploadProgress[doc.name] !== undefined && (
-                    <CircularProgress value={uploadProgress[doc.name]} size={40} />
-                  )}
-                  
-                  {/* Show RAG processing indicator */}
-                  {ragProcessingProgress[doc.id] && !uploadProgress[doc.name] && (
-                    <div className="relative inline-flex items-center justify-center" style={{ width: 40, height: 40 }}>
-                      <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full" />
-                      <div 
-                        className="absolute inset-0 border-4 border-blue-500 rounded-full animate-spin"
-                        style={{
-                          borderTopColor: 'transparent',
-                          borderRightColor: 'transparent',
-                        }}
-                      />
-                      <FileText className="w-4 h-4 text-blue-500" />
-                    </div>
-                  )}
-                  
-                  {canEdit && (
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor={`rag-${doc.id}`} className="text-sm text-muted-foreground cursor-pointer">
-                        RAG
-                      </Label>
-                      <Switch
-                        id={`rag-${doc.id}`}
-                        checked={doc.use_for_rag}
-                        onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
-                        disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleDownload(doc)}>
-                      <Download className="w-4 h-4 mr-2" />
-                      Downloaden
-                    </DropdownMenuItem>
-                    {canEdit && (
-                      <DropdownMenuItem
-                        onClick={() => handleDelete(doc)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Verwijderen
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             );
           })
