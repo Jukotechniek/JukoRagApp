@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, Header
 from fastapi.responses import Response
 import uvicorn
 
-from chat import chat_endpoint, ChatRequest, ChatResponse
+from chat import chat_endpoint, chat_endpoint_stream, ChatRequest, ChatResponse
 from document_processing import process_document_endpoint, ProcessDocumentRequest, ProcessDocumentResponse
 
 # Create FastAPI app
@@ -163,6 +163,23 @@ async def chat_route(
 ):
     """Chat endpoint"""
     return await chat_endpoint(request, authorization)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream_route(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """Streaming chat endpoint with step-by-step updates"""
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        chat_endpoint_stream(request, authorization),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 if __name__ == "__main__":

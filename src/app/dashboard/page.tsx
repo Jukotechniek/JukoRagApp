@@ -329,30 +329,46 @@ export default function DashboardPage() {
         },
       });
 
-      // Call chat via Next.js API route
-      let aiResponse: string;
+      // Call chat via streaming API
+      let aiResponse: string = '';
+      let streamingMessageId: string | null = null;
+      
       try {
-        const { sendChatMessage } = await import('@/lib/chat');
-        const chatResponse = await sendChatMessage({
-          question: userMessageContent,
-          organizationId: effectiveOrgId,
-          userId: user!.id,
-          conversationId,
-        });
+        const { sendChatMessageStream } = await import('@/lib/chat');
+        
+        // Create a temporary streaming message
+        const tempStreamingMessage: Message = {
+          id: `streaming-${Date.now()}`,
+          role: "assistant",
+          content: "",
+        };
+        setMessages((prev) => [...prev, tempStreamingMessage]);
+        streamingMessageId = tempStreamingMessage.id;
 
-        if (!chatResponse.success) {
-          throw new Error(chatResponse.error || 'Chat processing failed');
+        // Stream the response
+        const streamResult = await sendChatMessageStream(
+          {
+            question: userMessageContent,
+            organizationId: effectiveOrgId,
+            userId: user!.id,
+            conversationId,
+          },
+          (token: string) => {
+            // Update the streaming message with each token
+            aiResponse += token;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMessageId
+                  ? { ...msg, content: aiResponse }
+                  : msg
+              )
+            );
+          }
+        );
+
+        if (!streamResult.success) {
+          throw new Error(streamResult.error || 'Chat processing failed');
         }
-
-        aiResponse = chatResponse.response || 'Sorry, ik kon geen antwoord genereren.';
-
-        // Log metadata if available
-        if (chatResponse.metadata) {
-          console.log('[Chat] Metadata:', chatResponse.metadata);
-        }
-
-        // Token usage is already tracked by the API route
-        // The API route handles token tracking internally
 
         // Save AI response to database
         const { data: aiMessage, error: aiError } = await (supabase
@@ -368,14 +384,14 @@ export default function DashboardPage() {
           .single();
 
         if (!aiError && aiMessage) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: aiMessage.id,
-              role: "assistant",
-              content: aiResponse,
-            },
-          ]);
+          // Update the streaming message with the final ID
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId
+                ? { ...msg, id: aiMessage.id, content: aiResponse }
+                : msg
+            )
+          );
         }
       } catch (chatError: any) {
         console.error('Error calling chat:', chatError);

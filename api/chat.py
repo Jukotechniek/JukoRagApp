@@ -2,8 +2,10 @@
 import re
 import time
 import uuid
-from typing import Optional, List
+import json
+from typing import Optional, List, AsyncGenerator
 from fastapi import HTTPException, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 # Try different import paths for AgentExecutor based on LangChain version
 try:
@@ -554,6 +556,328 @@ def load_history(organization_id: str, user_id: str, conversation_id: Optional[s
             history_span.end()
         print(f"Error loading history: {e}")
         return []
+
+
+# Streaming callback handler for text streaming
+class StreamingCallbackHandler(BaseCallbackHandler):
+    def __init__(self, trace=None, trace_context=None, stream_callback=None):
+        self.trace = trace
+        self.trace_context = trace_context
+        self.stream_callback = stream_callback
+        self.current_generation = None
+        self.start_time = None
+        self.model_name = None
+        self.total_token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
+        self.streamed_text = ""
+    
+    def on_llm_start(self, serialized, prompts, **kwargs):
+        if self.trace and langfuse_client and self.trace_context:
+            self.start_time = time.time()
+            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or "gpt-4o"
+            self.model_name = model_name
+            
+            self.current_generation = langfuse_client.start_observation(
+                name="llm_call",
+                as_type="generation",
+                model=model_name,
+                input=prompts[0] if prompts else "",
+                trace_context=self.trace_context,
+                metadata={
+                    "model": model_name,
+                    "temperature": kwargs.get("temperature", 0),
+                    "model_type": serialized.get("_type", "chat_model"),
+                }
+            )
+    
+    def on_llm_new_token(self, token: str, **kwargs):
+        """Called when a new token is generated - stream it to client"""
+        if self.stream_callback:
+            self.stream_callback(token)
+        self.streamed_text += token
+    
+    def on_llm_end(self, response: LLMResult, **kwargs):
+        if self.current_generation and self.trace:
+            duration = (time.time() - self.start_time) * 1000 if self.start_time else 0
+            output_text = response.generations[0][0].text if response.generations else self.streamed_text
+            
+            usage = None
+            token_usage_metadata = {}
+            
+            if hasattr(response, 'llm_output') and response.llm_output:
+                usage = response.llm_output.get('token_usage')
+                if usage:
+                    token_usage_metadata = {
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    }
+                    self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
+                    self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
+                    self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
+            
+            self.current_generation.update(
+                output=output_text,
+                usage=usage,
+                metadata={
+                    "duration_ms": duration,
+                    "model": self.model_name or "unknown",
+                    **token_usage_metadata,
+                    "output_length": len(output_text),
+                }
+            )
+            self.current_generation.end()
+            self.current_generation = None
+    
+    def on_llm_error(self, error, **kwargs):
+        if self.current_generation and self.trace:
+            self.current_generation.update(
+                output={"error": str(error)},
+                level="ERROR",
+                metadata={
+                    "model": self.model_name or "unknown",
+                    "error_type": type(error).__name__
+                }
+            )
+            self.current_generation.end()
+            self.current_generation = None
+
+
+async def chat_endpoint_stream(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(None)
+) -> AsyncGenerator[str, None]:
+    """Streaming chat endpoint that streams text tokens"""
+    from config import verify_auth_token
+    
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+    trace = None
+    
+    try:
+        # Verify authentication
+        verified_user_id = await verify_auth_token(authorization, request.organizationId)
+        
+        # Create Langfuse trace with detailed step tracking
+        trace = None
+        trace_context = None
+        if langfuse_client:
+            trace_id = langfuse_client.create_trace_id()
+            trace_context = TraceContext(trace_id=trace_id)
+            trace = langfuse_client.start_span(
+                name="chat_request",
+                trace_context=trace_context,
+                metadata={
+                    "request_id": request_id,
+                    "organization_id": request.organizationId,
+                    "conversation_id": request.conversationId,
+                    "question": request.question,
+                    "question_length": len(request.question),
+                    "user_id": request.userId,
+                    "model": "gpt-4.1",
+                    "embedding_model": "text-embedding-3-small",
+                }
+            )
+        
+        # Step 1: Load history (tracked in Langfuse)
+        history_span = None
+        if trace and langfuse_client and trace_context:
+            history_span = langfuse_client.start_span(
+                name="load_history",
+                trace_context=trace_context,
+                metadata={"step": "Geschiedenis laden"}
+            )
+        
+        history = load_history(
+            request.organizationId,
+            request.userId or "default",
+            request.conversationId,
+            limit=8,
+            trace=trace,
+            trace_context=trace_context
+        )
+        
+        if history_span:
+            history_span.update(
+                metadata={"step": "Geschiedenis geladen", "messages_count": len(history)}
+            )
+            history_span.end()
+        
+        # Step 2: Agent execution (tracked in Langfuse)
+        agent_span = None
+        if trace and langfuse_client and trace_context:
+            agent_span = langfuse_client.start_span(
+                name="agent_execution",
+                trace_context=trace_context,
+                metadata={
+                    "step": "Agent uitvoeren",
+                    "input": {
+                        "question": request.question,
+                        "history_length": len(history)
+                    }
+                }
+            )
+        
+        agent_start = time.time()
+        
+        # Set trace and organization_id for retrieve tool
+        if trace:
+            set_current_trace(trace, trace_context, request.organizationId)
+        else:
+            set_current_trace(None, None, request.organizationId)
+        
+        # Create callback handler for LLM tracking (with Langfuse)
+        callbacks = []
+        callback_handler = None
+        if trace:
+            callback_handler = LangfuseCallbackHandler(trace=trace, trace_context=trace_context)
+            callbacks.append(callback_handler)
+        
+        # Invoke the agent executor
+        result = agent_executor.invoke({
+            "input": request.question,
+            "chat_history": history
+        }, config={"callbacks": callbacks} if callbacks else {})
+        
+        agent_duration = (time.time() - agent_start) * 1000
+        ai_message = result["output"]
+        
+        # Stream the response in chunks for better UX
+        chunk_size = 5  # Small chunks for smooth streaming
+        for i in range(0, len(ai_message), chunk_size):
+            chunk = ai_message[i:i+chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+        
+        # Get total token usage from callback handler
+        token_usage = None
+        if callback_handler:
+            token_usage = callback_handler.total_token_usage
+        
+        # Track agent execution completion
+        if agent_span:
+            agent_metadata = {
+                "duration_ms": agent_duration,
+                "model": "gpt-4.1",
+                "step": "Agent uitgevoerd"
+            }
+            
+            if token_usage and token_usage.get("total_tokens", 0) > 0:
+                agent_metadata["token_usage"] = token_usage
+                agent_metadata["prompt_tokens"] = token_usage.get("prompt_tokens", 0)
+                agent_metadata["completion_tokens"] = token_usage.get("completion_tokens", 0)
+                agent_metadata["total_tokens"] = token_usage.get("total_tokens", 0)
+            
+            agent_span.update(
+                output={
+                    "output": ai_message,
+                    "output_length": len(ai_message),
+                },
+                metadata=agent_metadata
+            )
+            agent_span.end()
+        
+        # Track intermediate steps in Langfuse
+        if trace and langfuse_client and trace_context and "intermediate_steps" in result:
+            for i, (action, observation) in enumerate(result.get("intermediate_steps", [])):
+                step_span = langfuse_client.start_span(
+                    name=f"agent_step_{i+1}",
+                    trace_context=trace_context,
+                    metadata={
+                        "step": f"Stap {i+1}",
+                        "action": str(action),
+                        "tool": action.tool if hasattr(action, 'tool') else None
+                    }
+                )
+                step_span.update(
+                    output={"observation": str(observation)[:500]},
+                    metadata={"step": f"Stap {i+1} voltooid"}
+                )
+                step_span.end()
+        
+        total_duration = (time.time() - start_time) * 1000
+        
+        # Log response time to analytics
+        try:
+            supabase.table("analytics").insert({
+                "organization_id": request.organizationId,
+                "event_type": "response_time",
+                "event_data": {
+                    "response_time_ms": total_duration,
+                    "question_length": len(request.question),
+                    "response_length": len(ai_message),
+                    "request_id": request_id
+                }
+            }).execute()
+        except Exception as analytics_error:
+            print(f"Warning: Failed to log response time to analytics: {analytics_error}")
+        
+        # End trace
+        if trace:
+            trace.update(
+                output={
+                    "success": True,
+                    "response": ai_message,
+                    "response_length": len(ai_message),
+                },
+                metadata={
+                    "total_duration_ms": total_duration,
+                    "step": "Chat voltooid"
+                }
+            )
+            trace.end()
+            if langfuse_client:
+                langfuse_client.flush()
+        
+        # Reset trace and organization_id for next request
+        set_current_trace(None, None, None)
+        
+        # Send final response marker
+        yield f"data: {json.dumps({'type': 'done', 'requestId': request_id})}\n\n"
+        
+    except Exception as e:
+        total_duration = (time.time() - start_time) * 1000
+        error_msg = str(e)
+        print(f"Error in chat endpoint: {e}")
+        
+        # Log response time to analytics even on error
+        try:
+            supabase.table("analytics").insert({
+                "organization_id": request.organizationId,
+                "event_type": "response_time",
+                "event_data": {
+                    "response_time_ms": total_duration,
+                    "question_length": len(request.question),
+                    "error": error_msg,
+                    "request_id": request_id
+                }
+            }).execute()
+        except Exception as analytics_error:
+            print(f"Warning: Failed to log response time to analytics: {analytics_error}")
+        
+        if trace:
+            trace.update(
+                output={
+                    "success": False,
+                    "error": error_msg
+                },
+                level="ERROR",
+                metadata={
+                    "total_duration_ms": total_duration,
+                    "step": "Fout opgetreden"
+                }
+            )
+            trace.end()
+            if langfuse_client:
+                langfuse_client.flush()
+        
+        # Reset trace and organization_id for next request
+        set_current_trace(None, None, None)
+        
+        # Send error response
+        yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
 
 
 async def chat_endpoint(
