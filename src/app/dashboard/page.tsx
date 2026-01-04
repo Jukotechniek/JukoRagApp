@@ -38,8 +38,6 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface Message {
   id: string;
@@ -51,7 +49,6 @@ export default function DashboardPage() {
   const { user, logout, loading, supabaseUser } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -657,52 +654,16 @@ export default function DashboardPage() {
         )}
 
         {/* Content Area */}
-        <div className="flex-1 p-4 lg:p-8 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col">
           {activeTab === "chat" && (
-            <div className="h-full flex flex-col max-w-4xl mx-auto w-full">
-              {/* Mobile Navigation Accordion */}
-              {isMobile && (
-                <div className="mb-4 flex-shrink-0">
-                  <Accordion type="single" collapsible className="w-full glass rounded-lg border border-border/50">
-                    <AccordionItem value="navigation" className="border-0">
-                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                        <div className="flex items-center gap-2">
-                          <Menu className="w-5 h-5" />
-                          <span className="font-medium">Navigatie</span>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-4 pb-4 pt-0">
-                        <nav className="space-y-1">
-                          {filteredMenuItems.map((item) => (
-                            <button
-                              key={item.id}
-                              onClick={() => {
-                                setActiveTab(item.id);
-                              }}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
-                                activeTab === item.id
-                                  ? "bg-primary/10 text-primary"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                              }`}
-                            >
-                              <item.icon className="w-4 h-4" />
-                              {item.label}
-                            </button>
-                          ))}
-                        </nav>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-                </div>
-              )}
-
-              {/* Chat Header */}
-              <div className="mb-4 flex items-center justify-between gap-3 flex-shrink-0">
-                <div className="flex-1 min-w-0">
-                  <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">
+            <div className="h-full flex flex-col w-full lg:max-w-4xl lg:mx-auto lg:p-8">
+              {/* Chat Header - Hidden on mobile, visible on desktop */}
+              <div className="hidden lg:flex mb-4 items-center justify-between gap-3 flex-shrink-0 px-4 lg:px-0">
+                <div>
+                  <h1 className="font-display text-2xl font-bold text-foreground">
                     AI Assistent
                   </h1>
-                  <p className="text-sm md:text-base text-muted-foreground">
+                  <p className="text-muted-foreground">
                     Stel vragen over uw technische documentatie
                   </p>
                 </div>
@@ -711,17 +672,33 @@ export default function DashboardPage() {
                   size="sm"
                   onClick={handleClearChat}
                   disabled={isClearing || messages.length === 0}
-                  className="flex-shrink-0"
                 >
-                  <span className="hidden sm:inline">Chat leegmaken</span>
-                  <span className="sm:hidden">Leeg</span>
+                  Chat leegmaken
                 </Button>
               </div>
 
-              {/* Messages - Scrollable container with fixed height */}
+              {/* Mobile: Compact header with clear button */}
+              <div className="lg:hidden flex items-center justify-between p-3 border-b border-border/30 flex-shrink-0">
+                <h1 className="font-display text-lg font-semibold text-foreground">
+                  AI Assistent
+                </h1>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearChat}
+                  disabled={isClearing || messages.length === 0}
+                >
+                  Wissen
+                </Button>
+              </div>
+
+              {/* Messages - Scrollable container */}
               <div 
-                className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0 pr-2"
-                style={{ maxHeight: isMobile ? 'calc(100vh - 320px)' : 'calc(100vh - 280px)' }}
+                className="flex-1 overflow-y-auto space-y-4 p-4 min-h-0"
+                style={{ 
+                  maxHeight: 'calc(100vh - 180px)',
+                  paddingBottom: '1rem'
+                }}
               >
                 {messages.map((message) => (
                   <div
@@ -731,7 +708,7 @@ export default function DashboardPage() {
                     }`}
                   >
                     <div
-                      className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 ${
+                      className={`max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-3 ${
                         message.role === "user"
                           ? "bg-primary/20 rounded-br-md"
                           : "glass rounded-bl-md"
@@ -761,35 +738,65 @@ export default function DashboardPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input - Fixed at bottom */}
-              <div className="flex items-center gap-3 flex-shrink-0 pt-2">
-                <Input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                  placeholder="Stel een vraag..."
-                  className="flex-1"
-                />
-                <Button variant="hero" size="icon" onClick={handleSendMessage} disabled={isSending || !inputValue.trim()}>
-                  <Send className="w-4 h-4" />
-                </Button>
+              {/* Input - Always visible at bottom, sticky on mobile */}
+              <div className="sticky bottom-0 bg-background border-t border-border/30 p-4 flex-shrink-0 z-10">
+                <div className="flex items-center gap-3 max-w-4xl mx-auto w-full">
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                    placeholder="Stel een vraag..."
+                    className="flex-1"
+                  />
+                  <Button variant="hero" size="icon" onClick={handleSendMessage} disabled={isSending || !inputValue.trim()}>
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
 
-          {activeTab === "documents" && <DocumentsView selectedOrganizationId={effectiveOrgId} />}
+          {activeTab === "documents" && (
+            <div className="p-4 lg:p-8">
+              <DocumentsView selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
 
-          {activeTab === "users" && <UsersView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />}
+          {activeTab === "users" && (
+            <div className="p-4 lg:p-8">
+              <UsersView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
 
-          {activeTab === "organizations" && <OrganizationsView />}
+          {activeTab === "organizations" && (
+            <div className="p-4 lg:p-8">
+              <OrganizationsView />
+            </div>
+          )}
 
-          {activeTab === "analytics" && <AnalyticsView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />}
+          {activeTab === "analytics" && (
+            <div className="p-4 lg:p-8">
+              <AnalyticsView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
 
-          {activeTab === "token-usage" && <TokenUsageView selectedOrganizationId={effectiveOrgId} />}
+          {activeTab === "token-usage" && (
+            <div className="p-4 lg:p-8">
+              <TokenUsageView selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
 
-          {activeTab === "billing" && <BillingView selectedOrganizationId={effectiveOrgId} />}
+          {activeTab === "billing" && (
+            <div className="p-4 lg:p-8">
+              <BillingView selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
 
-          {activeTab === "settings" && <SettingsView />}
+          {activeTab === "settings" && (
+            <div className="p-4 lg:p-8">
+              <SettingsView />
+            </div>
+          )}
         </div>
       </main>
     </div>
