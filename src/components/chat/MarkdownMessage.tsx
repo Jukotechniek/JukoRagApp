@@ -8,7 +8,7 @@ interface MarkdownMessageProps {
 
 export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProps) => {
   return (
-    <div className={`prose prose-sm dark:prose-invert max-w-none 
+    <div className={`prose prose-base lg:prose-sm dark:prose-invert max-w-none 
       prose-headings:text-foreground 
       prose-p:text-foreground/90 
       prose-strong:text-foreground 

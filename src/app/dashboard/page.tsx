@@ -707,13 +707,13 @@ export default function DashboardPage() {
                       className={`max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-3 ${
                         message.role === "user"
                           ? "bg-primary/20 rounded-br-md"
-                          : "bg-card/80 dark:bg-card/90 backdrop-blur-sm border border-border/30 rounded-bl-md"
+                          : "lg:bg-transparent lg:border-0 rounded-bl-md"
                       }`}
                     >
                       {message.role === "assistant" ? (
                         <MarkdownMessage content={message.content} />
                       ) : (
-                        <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-base lg:text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
                       )}
                     </div>
                     {message.role === "assistant" && message.id !== "welcome" && (
