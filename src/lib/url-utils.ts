@@ -47,3 +47,29 @@ export function getHomeUrl(): string {
   return `${window.location.protocol}//${mainDomain}`;
 }
 
+/**
+ * Get the auth URL (app subdomain auth page)
+ */
+export function getAuthUrl(): string {
+  if (typeof window === 'undefined') {
+    // Server-side: use relative path
+    return '/auth';
+  }
+
+  const hostname = window.location.hostname;
+  
+  // Development - use relative path
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return '/auth';
+  }
+
+  // Check if we're already on app subdomain
+  if (hostname.startsWith('app.')) {
+    return '/auth';
+  }
+
+  // On main domain - redirect to app subdomain
+  const mainDomain = getMainDomain();
+  return `${window.location.protocol}//app.${mainDomain}/auth`;
+}
+
