@@ -100,11 +100,20 @@ const SettingsView = () => {
   };
 
   const handleSaveProfile = async () => {
+    if (!user?.id) {
+      toast({
+        title: "Fout",
+        description: "Geen gebruiker gevonden.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("users")
         .update({ name: profileData.name })
-        .eq("id", user?.id);
+        .eq("id", user.id);
 
       if (error) throw error;
 
