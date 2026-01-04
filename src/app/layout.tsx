@@ -3,7 +3,7 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'JukoBot Assistant',
+  title: 'JukoBot - Assistent',
   description: 'Intelligente technische assistent voor industriële machines. AI-powered technische documentatie voor monteurs en technici.',
   manifest: '/manifest.json',
   themeColor: [

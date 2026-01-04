@@ -38,6 +38,8 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface Message {
   id: string;
@@ -49,6 +51,7 @@ export default function DashboardPage() {
   const { user, logout, loading, supabaseUser } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -346,7 +349,10 @@ export default function DashboardPage() {
 
         aiResponse = chatResponse.response || 'Sorry, ik kon geen antwoord genereren.';
 
-       
+        // Log metadata if available
+        if (chatResponse.metadata) {
+          console.log('[Chat] Metadata:', chatResponse.metadata);
+        }
 
         // Token usage is already tracked by the API route
         // The API route handles token tracking internally
@@ -554,7 +560,7 @@ export default function DashboardPage() {
                 <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
               <span className="font-display text-xl font-bold text-foreground">
-                Tech<span className="text-gradient">RAG</span>
+                Juko<span className="text-gradient">Bot</span>
               </span>
             </a>
           </div>
@@ -654,13 +660,49 @@ export default function DashboardPage() {
         <div className="flex-1 p-4 lg:p-8 overflow-hidden flex flex-col">
           {activeTab === "chat" && (
             <div className="h-full flex flex-col max-w-4xl mx-auto w-full">
+              {/* Mobile Navigation Accordion */}
+              {isMobile && (
+                <div className="mb-4 flex-shrink-0">
+                  <Accordion type="single" collapsible className="w-full glass rounded-lg border border-border/50">
+                    <AccordionItem value="navigation" className="border-0">
+                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                          <Menu className="w-5 h-5" />
+                          <span className="font-medium">Navigatie</span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-4 pb-4 pt-0">
+                        <nav className="space-y-1">
+                          {filteredMenuItems.map((item) => (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setActiveTab(item.id);
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
+                                activeTab === item.id
+                                  ? "bg-primary/10 text-primary"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                              }`}
+                            >
+                              <item.icon className="w-4 h-4" />
+                              {item.label}
+                            </button>
+                          ))}
+                        </nav>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+              )}
+
               {/* Chat Header */}
               <div className="mb-4 flex items-center justify-between gap-3 flex-shrink-0">
-                <div>
-                  <h1 className="font-display text-2xl font-bold text-foreground">
+                <div className="flex-1 min-w-0">
+                  <h1 className="font-display text-xl md:text-2xl font-bold text-foreground">
                     AI Assistent
                   </h1>
-                  <p className="text-muted-foreground">
+                  <p className="text-sm md:text-base text-muted-foreground">
                     Stel vragen over uw technische documentatie
                   </p>
                 </div>
@@ -669,15 +711,17 @@ export default function DashboardPage() {
                   size="sm"
                   onClick={handleClearChat}
                   disabled={isClearing || messages.length === 0}
+                  className="flex-shrink-0"
                 >
-                  Chat leegmaken
+                  <span className="hidden sm:inline">Chat leegmaken</span>
+                  <span className="sm:hidden">Leeg</span>
                 </Button>
               </div>
 
               {/* Messages - Scrollable container with fixed height */}
               <div 
                 className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0 pr-2"
-                style={{ maxHeight: 'calc(100vh - 280px)' }}
+                style={{ maxHeight: isMobile ? 'calc(100vh - 320px)' : 'calc(100vh - 280px)' }}
               >
                 {messages.map((message) => (
                   <div
@@ -687,7 +731,7 @@ export default function DashboardPage() {
                     }`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                      className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 ${
                         message.role === "user"
                           ? "bg-primary/20 rounded-br-md"
                           : "glass rounded-bl-md"

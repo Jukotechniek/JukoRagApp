@@ -269,7 +269,7 @@ function AuthPageContent() {
               <Bot className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="font-display text-xl font-bold text-foreground">
-              Tech<span className="text-gradient">RAG</span>
+              Juko<span className="text-gradient">Bot</span>
             </span>
           </div>
 

@@ -145,8 +145,19 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             embedding_gen.end()
         
         if semantic_span:
+            semantic_info = []
+            for doc in semantic_docs:
+                semantic_info.append({
+                    "source": doc.metadata.get("source", "Unknown"),
+                    "page": doc.metadata.get("page", doc.metadata.get("page_number_footer", "N/A")),
+                    "similarity": doc.metadata.get("similarity"),
+                    "content_preview": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                })
             semantic_span.update(
-                output={"results_count": len(semantic_docs)},
+                output={
+                    "results_count": len(semantic_docs),
+                    "documents": semantic_info
+                },
                 metadata={"duration_ms": semantic_duration}
             )
             semantic_span.end()
@@ -249,8 +260,18 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
         
         keyword_duration = (time.time() - keyword_start) * 1000
         if keyword_span:
+            keyword_info = []
+            for doc in keyword_docs:
+                keyword_info.append({
+                    "source": doc.metadata.get("source", "Unknown"),
+                    "page": doc.metadata.get("page", doc.metadata.get("page_number_footer", "N/A")),
+                    "content_preview": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                })
             keyword_span.update(
-                output={"results_count": len(keyword_docs)},
+                output={
+                    "results_count": len(keyword_docs),
+                    "documents": keyword_info
+                },
                 metadata={"duration_ms": keyword_duration}
             )
             keyword_span.end()
@@ -320,15 +341,20 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
                     "similarity": doc.metadata.get("similarity")  # Only for semantic results
                 })
             
+            # Prepare output with actual retrieved content
+            retrieve_output = {
+                "query": query,
+                "documents_count": len(retrieved_docs),
+                "unique_documents": len(unique_doc_ids),
+                "retrieved_content": serialized,  # The actual retrieved text
+                "documents": retrieved_doc_info  # Document metadata
+            }
+            
             retrieve_span.update(
-                output={
-                    "retrieved_text_length": len(serialized),
-                    "documents_count": len(retrieved_docs),
-                    "unique_documents": len(unique_doc_ids),
-                    "retrieved_documents": retrieved_doc_info  # Full document details
-                },
+                output=retrieve_output,
                 metadata={
                     "duration_ms": duration,
+                    "retrieved_text_length": len(serialized),
                     "document_ids": list(unique_doc_ids),  # For easy filtering
                     "document_names": [doc["source"] for doc in retrieved_doc_info]  # Document names list
                 }
@@ -387,6 +413,11 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
         self.current_generation = None
         self.start_time = None
         self.model_name = None
+        self.total_token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
     
     def on_llm_start(self, serialized, prompts, **kwargs):
         if self.trace and langfuse_client and self.trace_context:
@@ -422,10 +453,14 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
                 # Also store in metadata for easier viewing
                 if usage:
                     token_usage_metadata = {
-                        "prompt_tokens": usage.get("prompt_tokens"),
-                        "completion_tokens": usage.get("completion_tokens"),
-                        "total_tokens": usage.get("total_tokens"),
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
                     }
+                    # Accumulate token usage for agent total
+                    self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
+                    self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
+                    self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
             
             self.current_generation.update(
                 output=output_text,
@@ -605,8 +640,10 @@ async def chat_endpoint(
         
         # Create callback handler for LLM tracking
         callbacks = []
+        callback_handler = None
         if trace:
-            callbacks.append(LangfuseCallbackHandler(trace=trace, trace_context=trace_context))
+            callback_handler = LangfuseCallbackHandler(trace=trace, trace_context=trace_context)
+            callbacks.append(callback_handler)
         
         # Invoke the agent executor with callbacks
         result = agent_executor.invoke({
@@ -617,17 +654,31 @@ async def chat_endpoint(
         agent_duration = (time.time() - agent_start) * 1000
         ai_message = result["output"]
         
+        # Get total token usage from callback handler
+        token_usage = None
+        if callback_handler:
+            token_usage = callback_handler.total_token_usage
+        
         # Track agent execution
         if agent_span:
+            agent_metadata = {
+                "duration_ms": agent_duration,
+                "model": "gpt-4.1",  # Model used for agent
+            }
+            
+            # Add token usage if available
+            if token_usage and token_usage.get("total_tokens", 0) > 0:
+                agent_metadata["token_usage"] = token_usage
+                agent_metadata["prompt_tokens"] = token_usage.get("prompt_tokens", 0)
+                agent_metadata["completion_tokens"] = token_usage.get("completion_tokens", 0)
+                agent_metadata["total_tokens"] = token_usage.get("total_tokens", 0)
+            
             agent_span.update(
                 output={
                     "output": ai_message,
                     "output_length": len(ai_message),
                 },
-                metadata={
-                    "duration_ms": agent_duration,
-                    "model": "gpt-4.1",  # Model used for agent
-                }
+                metadata=agent_metadata
             )
             agent_span.end()
         
