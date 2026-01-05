@@ -98,6 +98,8 @@
 
   html {
     scroll-behavior: smooth;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
   body {
@@ -105,6 +107,9 @@
     font-family: 'Inter', system-ui, sans-serif;
     background: var(--gradient-light);
     min-height: 100vh;
+    overflow-x: hidden;
+    max-width: 100vw;
+    position: relative;
   }
 
   .dark body {

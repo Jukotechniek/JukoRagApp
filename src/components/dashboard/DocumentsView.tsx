@@ -780,7 +780,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   };
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden">
+    <div className="w-full max-w-full overflow-x-hidden min-w-0">
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 sm:mb-6">
         <div className="min-w-0 flex-1">
@@ -813,7 +813,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       {/* Upload Area - Only show if user can edit */}
       {canEdit && (
         <div
-          className={`glass rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-4 sm:mb-6 border-dashed border-2 transition-colors cursor-pointer w-full max-w-full ${
+          className={`glass rounded-xl sm:rounded-2xl p-4 sm:p-8 mb-4 sm:mb-6 border-dashed border-2 transition-colors cursor-pointer w-full max-w-full min-w-0 ${
             isDragging ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/50"
           }`}
           onDragOver={handleDragOver}
@@ -850,7 +850,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       )}
 
       {/* Documents List */}
-      <div className="space-y-2 sm:space-y-3">
+      <div className="space-y-2 sm:space-y-3 w-full min-w-0">
         {/* Show uploading files at the top - only if not already in documents list */}
         {uploadingFiles
           .filter((uploadingFile) => !filteredDocuments.some((doc) => doc.name === uploadingFile.name))
@@ -859,16 +859,16 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             return (
               <div
                 key={`uploading-${uploadingFile.name}`}
-                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center gap-3 sm:gap-4 border-primary/30"
+                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 flex items-center gap-3 sm:gap-4 border-primary/30 min-w-0 w-full"
               >
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
                   <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-primary animate-pulse" />
                 </div>
 
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
                   <h4 className="font-medium text-sm sm:text-base text-foreground truncate">{uploadingFile.name}</h4>
                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
-                    <span>{uploadingFile.size}</span>
+                    <span className="truncate">{uploadingFile.size}</span>
                     <span className="hidden sm:inline">•</span>
                     <span>Uploaden...</span>
                   </div>
@@ -896,27 +896,27 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             return (
               <div
                 key={doc.id}
-                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 hover:border-primary/30 transition-colors"
+                className="glass rounded-lg sm:rounded-xl p-3 sm:p-4 hover:border-primary/30 transition-colors min-w-0 w-full"
               >
-                <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex items-start gap-3 sm:gap-4 min-w-0 w-full">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
                     <IconComponent className={`w-4 h-4 sm:w-5 sm:h-5 ${typeColors[doc.type]}`} />
                   </div>
 
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <h4 className="font-medium text-sm sm:text-base text-foreground truncate mb-1">{doc.name}</h4>
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-0">
-                      <span>{doc.size}</span>
+                      <span className="truncate">{doc.size}</span>
                       <span className="hidden sm:inline">•</span>
-                      <span className="hidden sm:inline">{doc.uploadedAt}</span>
+                      <span className="hidden sm:inline truncate">{doc.uploadedAt}</span>
                       <span className="hidden sm:inline">•</span>
-                      <span className="hidden sm:inline">{doc.uploadedBy}</span>
+                      <span className="hidden sm:inline truncate">{doc.uploadedBy}</span>
                       {/* Mobile: show only date and name on separate lines */}
-                      <span className="sm:hidden block w-full text-xs mt-1">{doc.uploadedAt}</span>
+                      <span className="sm:hidden block w-full text-xs mt-1 truncate">{doc.uploadedAt}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     {/* Show upload progress if uploading */}
                     {uploadProgress[doc.name] !== undefined && (
                       <CircularProgress value={uploadProgress[doc.name]} size={32} strokeWidth={3} />
@@ -938,8 +938,8 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                     )}
                     
                     {canEdit && (
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <Label htmlFor={`rag-${doc.id}`} className="text-xs sm:text-sm text-muted-foreground cursor-pointer">
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                        <Label htmlFor={`rag-${doc.id}`} className="text-xs sm:text-sm text-muted-foreground cursor-pointer whitespace-nowrap">
                           <span className="hidden sm:inline">Verwerk document</span>
                           <span className="sm:hidden">Verwerk</span>
                         </Label>
@@ -948,6 +948,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                           checked={doc.use_for_rag}
                           onCheckedChange={(checked) => handleToggleRAG(doc, checked)}
                           disabled={!!uploadProgress[doc.name] || !!ragProcessingProgress[doc.id]}
+                          className="flex-shrink-0"
                         />
                       </div>
                     )}

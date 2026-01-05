@@ -667,7 +667,7 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen relative">
+      <main className="flex-1 flex flex-col min-h-screen relative min-w-0 overflow-x-hidden">
         {/* Mobile Header - Sticky */}
         <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 glass bg-background">
           <button onClick={() => setSidebarOpen(true)} className="p-2">
@@ -708,7 +708,7 @@ export default function DashboardPage() {
         )}
 
         {/* Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {activeTab === "chat" && (
             <div className="h-full flex flex-col w-full lg:max-w-4xl lg:mx-auto lg:p-8">
               {/* Chat Header - Hidden on mobile, visible on desktop */}
@@ -836,7 +836,7 @@ export default function DashboardPage() {
           )}
 
           {activeTab === "documents" && (
-            <div className="p-4 lg:p-8 w-full max-w-full overflow-x-hidden">
+            <div className="p-4 lg:p-8 w-full max-w-full overflow-x-hidden min-w-0">
               <DocumentsView selectedOrganizationId={effectiveOrgId} />
             </div>
           )}
