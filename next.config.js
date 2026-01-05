@@ -24,6 +24,16 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  webpack: (config, { isServer }) => {
+    // Fix for react-pdf: prevent pdfjs-dist from being bundled on server
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        canvas: false,
+      };
+    }
+    return config;
+  },
   // REMOVED env section - secrets should ONLY be accessed via process.env in server-side code
   // Never expose service role keys or other secrets in next.config.js env
   // They are automatically available via process.env in API routes and server components
