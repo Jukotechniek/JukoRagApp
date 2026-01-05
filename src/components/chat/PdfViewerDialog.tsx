@@ -1,9 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, X, ExternalLink, Maximize2, Minimize2 } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
+
+// Dynamically import PDF viewer to avoid SSR issues
+const PDFViewer = dynamic<{ pdfUrl: string; initialPage: number }>(
+  () => import('./PdfViewerContent').then((mod) => ({ default: mod.PDFViewerContent })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">PDF viewer laden...</div>
+      </div>
+    )
+  }
+);
 
 interface PdfViewerDialogProps {
   open: boolean;
@@ -20,34 +34,19 @@ export function PdfViewerDialog({
   initialPage = 1,
   documentName = 'Document',
 }: PdfViewerDialogProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [iframeKey, setIframeKey] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Reset state when dialog opens
+  // Detect mobile device
   useEffect(() => {
-    if (open && pdfUrl) {
-      setLoading(true);
-      setError(null);
-      setIframeKey(prev => prev + 1); // Force iframe reload
-      
-      // Small delay to ensure iframe is ready
-      setTimeout(() => {
-        setLoading(false);
-      }, 500);
-    }
-  }, [open, pdfUrl, initialPage]);
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
-  const handleIframeLoad = () => {
-    setLoading(false);
-    setError(null);
-  };
-
-  const handleIframeError = () => {
-    setLoading(false);
-    setError('Kon PDF niet laden. Het bestand is mogelijk niet toegankelijk of beschadigd.');
-  };
 
   const handleOpenInNewTab = () => {
     if (pdfUrl) {
@@ -58,97 +57,53 @@ export function PdfViewerDialog({
     }
   };
 
-  const handleToggleFullscreen = () => {
-    const dialogElement = document.querySelector('[data-pdf-dialog]') as HTMLElement;
-    if (!dialogElement) return;
-
-    if (!isFullscreen) {
-      // Enter fullscreen
-      if (dialogElement.requestFullscreen) {
-        dialogElement.requestFullscreen();
-      } else if ((dialogElement as any).webkitRequestFullscreen) {
-        (dialogElement as any).webkitRequestFullscreen();
-      } else if ((dialogElement as any).msRequestFullscreen) {
-        (dialogElement as any).msRequestFullscreen();
-      }
-      setIsFullscreen(true);
-    } else {
-      // Exit fullscreen
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      } else if ((document as any).msExitFullscreen) {
-        (document as any).msExitFullscreen();
-      }
-      setIsFullscreen(false);
-    }
-  };
-
-  // Listen for fullscreen changes
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('msfullscreenchange', handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-    };
-  }, []);
-
   if (!pdfUrl) {
     return null;
   }
-
-  const urlWithPage = initialPage > 1 
-    ? `${pdfUrl}#page=${initialPage}`
-    : pdfUrl;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-pdf-dialog
-        className="max-w-6xl w-full h-[90vh] flex flex-col p-0 [&>button[class*='right-4'][class*='top-4']]:hidden"
+        className={`
+          ${isMobile 
+            ? 'fixed inset-0 w-full h-full max-w-none translate-x-0 translate-y-0 rounded-none' 
+            : 'max-w-6xl w-full h-[90vh] max-h-[90vh]'
+          }
+          flex flex-col p-0 [&>button[class*='right-4'][class*='top-4']]:hidden
+        `}
         aria-describedby="pdf-viewer-description"
       >
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
-          <div className="flex items-center justify-between gap-4">
-            <DialogTitle className="text-lg font-semibold flex-1">
-              {documentName}
+        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b flex-shrink-0">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <DialogTitle className="text-base sm:text-lg font-semibold flex-1 truncate">
+              <span className="truncate block">{documentName}</span>
               {initialPage > 1 && (
-                <span className="ml-2 text-sm text-muted-foreground font-normal">
+                <span className="ml-2 text-xs sm:text-sm text-muted-foreground font-normal">
                   (Pagina {initialPage})
                 </span>
               )}
             </DialogTitle>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
+              {isMobile && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleOpenInNewTab}
+                  className="text-xs"
+                >
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Openen in browser
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleOpenInNewTab}
-                className="text-xs"
+                className="text-xs hidden sm:flex"
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
                 Openen in nieuw tabblad
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleToggleFullscreen}
-                className="h-8 w-8"
-                title={isFullscreen ? 'Volledig scherm afsluiten' : 'Volledig scherm'}
-              >
-                {isFullscreen ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
               </Button>
               <Button
                 variant="ghost"
@@ -163,44 +118,8 @@ export function PdfViewerDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden bg-secondary/20 relative">
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-              <div className="flex flex-col items-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2 text-muted-foreground mt-2">PDF laden...</span>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-              <div className="text-center p-4">
-                <p className="text-destructive mb-2">{error}</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Controleer de browser console voor meer details
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleOpenInNewTab}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Probeer in nieuw tabblad
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <iframe
-            key={iframeKey}
-            src={urlWithPage}
-            className="w-full h-full border-0"
-            title={`PDF Viewer: ${documentName}`}
-            onLoad={handleIframeLoad}
-            onError={handleIframeError}
-            style={{ minHeight: '600px' }}
-          />
+        <div className={`flex-1 bg-secondary/20 relative w-full overflow-hidden ${isMobile ? 'min-h-0' : ''}`}>
+          <PDFViewer pdfUrl={pdfUrl} initialPage={initialPage} />
         </div>
 
         <div id="pdf-viewer-description" className="sr-only">

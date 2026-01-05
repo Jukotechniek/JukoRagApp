@@ -25,13 +25,32 @@ const nextConfig = {
     },
   },
   webpack: (config, { isServer }) => {
-    // Fix for react-pdf: prevent pdfjs-dist from being bundled on server
+    // Fix for react-pdf-viewer and pdfjs-dist: prevent Node.js modules from being bundled
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
         canvas: false,
+        'utf-8-validate': false,
+        'bufferutil': false,
+      };
+    } else {
+      // On server side, also ignore these modules
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        canvas: false,
+        'utf-8-validate': false,
+        'bufferutil': false,
       };
     }
+    
+    // Ignore canvas and other Node.js modules in pdfjs-dist
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      canvas: false,
+      'utf-8-validate': false,
+      'bufferutil': false,
+    };
+    
     return config;
   },
   // REMOVED env section - secrets should ONLY be accessed via process.env in server-side code
