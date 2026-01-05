@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { visit } from 'unist-util-visit';
-import type { Root, Text, Paragraph, Parent } from 'mdast';
+import type { Root, Text, Parent } from 'mdast';
 import { getDocumentWithSignedUrl } from '@/lib/document-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
