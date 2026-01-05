@@ -1,7 +1,4 @@
 import { supabase } from './supabase';
-import type { Database } from '@/types/database';
-
-type DocumentRow = Database['public']['Tables']['documents']['Row'];
 
 export interface DocumentInfo {
   id: string;
