@@ -58,8 +58,13 @@ export function getAuthUrl(): string {
 
   const hostname = window.location.hostname;
   
-  // Development - use relative path
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+  // Development - ALWAYS use relative path for localhost to prevent blocked redirects
+  // Check for localhost, 127.0.0.1, or any local development domain
+  if (hostname === 'localhost' || 
+      hostname === '127.0.0.1' || 
+      hostname.includes('localhost') ||
+      hostname.includes('127.0.0.1') ||
+      hostname.includes('.local')) {
     return '/auth';
   }
 
@@ -68,7 +73,7 @@ export function getAuthUrl(): string {
     return '/auth';
   }
 
-  // On main domain - redirect to app subdomain
+  // On main domain - redirect to app subdomain (production only)
   const mainDomain = getMainDomain();
   return `${window.location.protocol}//app.${mainDomain}/auth`;
 }

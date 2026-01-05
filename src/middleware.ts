@@ -15,8 +15,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Skip redirects in development (localhost)
-  const isDevelopment = hostname.includes('localhost') || hostname.includes('127.0.0.1');
+  // Skip redirects in development (localhost, local IPs, or any IP address)
+  // Check for localhost, 127.0.0.1, or any IP address (192.168.x.x, 10.x.x.x, etc.)
+  const isDevelopment = 
+    hostname.includes('localhost') || 
+    hostname.includes('127.0.0.1') ||
+    /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(hostname) || // Matches IP addresses like 192.168.68.123 or 192.168.68.123:3000
+    hostname.includes('.local') ||
+    hostname === '0.0.0.0';
+  
   if (isDevelopment) {
     return NextResponse.next();
   }

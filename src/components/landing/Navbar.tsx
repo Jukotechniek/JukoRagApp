@@ -1,18 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Bot } from "lucide-react";
-import { getAuthUrl } from "@/lib/url-utils";
 
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [authUrl, setAuthUrl] = useState('/auth');
-
-  useEffect(() => {
-    setAuthUrl(getAuthUrl());
-  }, []);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/30">
@@ -43,9 +37,9 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <a href={authUrl}>
+            <Link href="/auth">
               <Button variant="ghost">Inloggen</Button>
-            </a>
+            </Link>
             <a href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
               <Button variant="hero">Start Gratis</Button>
             </a>
@@ -86,11 +80,11 @@ export const Navbar = () => {
                 Hoe het werkt
               </a>
               <div className="flex flex-col gap-2 pt-4 border-t border-border/30">
-                <a href={authUrl} onClick={() => setIsOpen(false)}>
+                <Link href="/auth" onClick={() => setIsOpen(false)}>
                   <Button variant="ghost" className="w-full justify-start">
                     Inloggen
                   </Button>
-                </a>
+                </Link>
                 <a 
                   href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
                   onClick={() => setIsOpen(false)}
