@@ -172,11 +172,9 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfPage, setPdfPage] = useState<number>(1);
   const [pdfDocumentName, setPdfDocumentName] = useState<string>('Document');
-  const [loadingPdf, setLoadingPdf] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleCitationClick = useCallback(async (filename: string, pageNumber: number) => {
-    setLoadingPdf(true);
     try {
       // pageNumber is the page_number_footer from the citation
       // We need to convert it to actual_page
@@ -188,7 +186,6 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
           description: `Kon document "${filename}" niet vinden.`,
           variant: 'destructive',
         });
-        setLoadingPdf(false);
         return;
       }
 
@@ -204,8 +201,6 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
         description: 'Kon PDF niet laden. Probeer het opnieuw.',
         variant: 'destructive',
       });
-    } finally {
-      setLoadingPdf(false);
     }
   }, [user?.organization_id, toast]);
 
