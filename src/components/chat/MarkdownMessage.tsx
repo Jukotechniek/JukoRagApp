@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { visit } from 'unist-util-visit';
-import type { Root, Text, Paragraph } from 'mdast';
+import type { Root, Text, Paragraph, Parent } from 'mdast';
 import { getDocumentWithSignedUrl } from '@/lib/document-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -65,8 +65,8 @@ function parseCitations(text: string): Array<{ citation: CitationInfo; pageNumbe
 // Custom remark plugin to transform citations
 function remarkCitations() {
   return (tree: Root) => {
-    visit(tree, 'text', (node: Text, index: number | undefined, parent: Paragraph | undefined) => {
-      if (!parent || index === undefined) return;
+    visit(tree, 'text', (node: Text, index: number | undefined, parent: Parent | undefined) => {
+      if (!parent || index === undefined || parent.type !== 'paragraph') return;
 
       const text = node.value;
       const citationResults = parseCitations(text);
