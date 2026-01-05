@@ -1,6 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as fs from 'fs';
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://python-api:8000';
+// Determine Python API URL based on environment
+// In Docker: use service name 'python-api'
+// In local dev: use 'localhost'
+const getPythonApiUrl = () => {
+  // If explicitly set in environment, use that (highest priority)
+  if (process.env.PYTHON_API_URL) {
+    return process.env.PYTHON_API_URL;
+  }
+  
+  // Check if we're running in Docker container
+  // Docker containers have /.dockerenv file (this works server-side in Node.js)
+  let isDocker = false;
+  try {
+    isDocker = fs.existsSync('/.dockerenv');
+  } catch {
+    // If fs check fails, assume local development
+    isDocker = false;
+  }
+  
+  // Also check for DOCKER_ENV environment variable (can be set in docker-compose)
+  if (process.env.DOCKER_ENV === 'true') {
+    isDocker = true;
+  }
+  
+  // In Docker, use service name; in local dev, use localhost
+  return isDocker ? 'http://python-api:8000' : 'http://localhost:8000';
+};
+
+const PYTHON_API_URL = getPythonApiUrl();
 
 export async function POST(req: NextRequest) {
   try {

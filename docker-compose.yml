@@ -49,6 +49,8 @@ services:
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       # Supabase (server-side only)
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_KEY}
+      # Docker detection flag
+      - DOCKER_ENV=true
       # Python API URL - use service name for internal communication
       - PYTHON_API_URL=http://python-api:8000
       - NEXT_PUBLIC_PYTHON_API_URL=${NEXT_PUBLIC_PYTHON_API_URL:-http://python-api:8000}

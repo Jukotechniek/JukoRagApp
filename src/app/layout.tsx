@@ -6,10 +6,6 @@ export const metadata: Metadata = {
   title: 'JukoBot - Assistent',
   description: 'Intelligente technische assistent voor industriële machines. AI-powered technische documentatie voor monteurs en technici.',
   manifest: '/manifest.json',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#1a1d26' },
-  ],
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -27,6 +23,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#1a1d26' },
+  ],
 };
 
 export default function RootLayout({

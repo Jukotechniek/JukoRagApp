@@ -386,6 +386,10 @@ export default function DashboardPage() {
         );
 
         if (!streamResult.success) {
+          // Remove streaming message before throwing error
+          if (streamingMessageId) {
+            setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId));
+          }
           throw new Error(streamResult.error || 'Chat processing failed');
         }
 
@@ -414,6 +418,11 @@ export default function DashboardPage() {
         }
       } catch (chatError: any) {
         console.error('Error calling chat:', chatError);
+        
+        // Remove the streaming message if it exists (to stop "Denken ..." indicator)
+        if (streamingMessageId) {
+          setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId));
+        }
         
         const errorMessage = chatError.message || "Er is een fout opgetreden bij het genereren van het antwoord.";
         const fallbackResponse = "Sorry, ik kon geen antwoord genereren. Er is een fout opgetreden bij het verwerken van je vraag.";
@@ -448,6 +457,16 @@ export default function DashboardPage() {
         });
       } finally {
         setIsSending(false);
+        // Ensure streaming message is removed if still present (safety check)
+        if (streamingMessageId) {
+          setMessages((prev) => {
+            const streamingMsg = prev.find((msg) => msg.id === streamingMessageId && !msg.content);
+            if (streamingMsg) {
+              return prev.filter((msg) => msg.id !== streamingMessageId);
+            }
+            return prev;
+          });
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error);
