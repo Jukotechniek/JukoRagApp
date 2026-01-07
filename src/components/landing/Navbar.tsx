@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Bot } from "lucide-react";
+import { getAuthUrl } from "@/lib/url-utils";
 
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [authUrl, setAuthUrl] = useState("/auth");
+  const router = useRouter();
+
+  useEffect(() => {
+    // Set auth URL on client side
+    setAuthUrl(getAuthUrl());
+  }, []);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/30">
@@ -37,9 +46,20 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <Link href="/auth">
-              <Button variant="ghost">Inloggen</Button>
-            </Link>
+            <Button 
+              variant="ghost" 
+              onClick={() => {
+                if (authUrl.startsWith('http')) {
+                  // Full URL - use window.location for cross-domain navigation
+                  window.location.href = authUrl;
+                } else {
+                  // Relative URL - use router
+                  router.push(authUrl);
+                }
+              }}
+            >
+              Inloggen
+            </Button>
             <a href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
               <Button variant="hero">Start Gratis</Button>
             </a>
@@ -80,11 +100,22 @@ export const Navbar = () => {
                 Hoe het werkt
               </a>
               <div className="flex flex-col gap-2 pt-4 border-t border-border/30">
-                <Link href="/auth" onClick={() => setIsOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">
-                    Inloggen
-                  </Button>
-                </Link>
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setIsOpen(false);
+                    if (authUrl.startsWith('http')) {
+                      // Full URL - use window.location for cross-domain navigation
+                      window.location.href = authUrl;
+                    } else {
+                      // Relative URL - use router
+                      router.push(authUrl);
+                    }
+                  }}
+                >
+                  Inloggen
+                </Button>
                 <a 
                   href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
                   onClick={() => setIsOpen(false)}
