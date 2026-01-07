@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowRight, MessageSquare, FileText, Zap, ExternalLink, FileText as FileTextIcon } from "lucide-react";
+import { ArrowRight, MessageSquare, FileText, Zap, ExternalLink } from "lucide-react";
 
 export const Hero = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
