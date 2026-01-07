@@ -207,13 +207,13 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     const planData = {
       starter: {
         name: "Starter",
-        price: "€99",
+        price: "--",
         period: "per maand",
         features: ["Tot 100 documenten", "Tot 5 gebruikers", "Basis support", "Basis analytics"],
       },
       professional: {
         name: "Professional",
-        price: "€299",
+        price: "--",
         period: "per maand",
         features: [
           "Onbeperkte documenten",
@@ -224,7 +224,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
       },
       enterprise: {
         name: "Enterprise",
-        price: "Prijs op aanvraag",
+        price: "--",
         period: "",
         features: [
           "Onbeperkte documenten en gebruikers",
@@ -241,14 +241,14 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     {
       id: "starter",
       name: "Starter",
-      price: "€99",
+      price: "--",
       period: "per maand",
       features: ["Tot 100 documenten", "Tot 5 gebruikers", "Basis support", "Basis analytics"],
     },
     {
       id: "professional",
       name: "Professional",
-      price: "€299",
+      price: "--",
       period: "per maand",
       features: [
         "Onbeperkte documenten",
@@ -260,7 +260,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     {
       id: "enterprise",
       name: "Enterprise",
-      price: "Prijs op aanvraag",
+      price: "--",
       period: "",
       features: [
         "Onbeperkte documenten en gebruikers",
@@ -660,9 +660,9 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="starter">Starter - €99/maand</SelectItem>
-                  <SelectItem value="professional">Professional - €299/maand</SelectItem>
-                  <SelectItem value="enterprise">Enterprise - prijs op aanvraag</SelectItem>
+                  <SelectItem value="starter">Starter - --/maand</SelectItem>
+                  <SelectItem value="professional">Professional - --/maand</SelectItem>
+                  <SelectItem value="enterprise">Enterprise - --</SelectItem>
                 </SelectContent>
               </Select>
             </div>

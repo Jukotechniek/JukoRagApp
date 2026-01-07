@@ -55,31 +55,47 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
 
       switch (timeRange) {
         case "week":
-          startDate = subWeeks(now, 1);
+          // Start from beginning of current week (Monday at 00:00:00 local time)
+          startDate = startOfWeek(now, { weekStartsOn: 1 });
+          // Ensure we start at the beginning of Monday (00:00:00)
+          startDate.setHours(0, 0, 0, 0);
           break;
         case "month":
-          startDate = subMonths(now, 1);
+          // Start from beginning of current month
+          startDate = startOfMonth(now);
+          startDate.setHours(0, 0, 0, 0);
           break;
         case "year":
-          startDate = subMonths(now, 12);
+          // Start from beginning of current year
+          const yearStart = new Date(now.getFullYear(), 0, 1);
+          yearStart.setHours(0, 0, 0, 0);
+          startDate = yearStart;
           break;
         default:
-          startDate = subWeeks(now, 1);
+          startDate = startOfWeek(now, { weekStartsOn: 1 });
+          startDate.setHours(0, 0, 0, 0);
       }
 
       // Build query based on role and selected organization
+      // Use gte to include all data from startDate onwards (including today)
       let analyticsQuery = supabase
         .from("analytics")
         .select("*")
-        .gte("created_at", startDate.toISOString());
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", now.toISOString()); // Also ensure we don't get future data
 
+      // For admins, if a specific organization is selected, filter by it
+      // Otherwise, admins see all analytics
       if (effectiveOrgId) {
         analyticsQuery = analyticsQuery.eq("organization_id", effectiveOrgId);
       }
 
       const { data: analyticsData, error: analyticsError } = await analyticsQuery;
 
-      if (analyticsError) throw analyticsError;
+      if (analyticsError) {
+        console.error("Error loading analytics data:", analyticsError);
+        throw analyticsError;
+      }
 
       // Count questions asked
       const questionsCount = analyticsData?.filter((a) => a.event_type === "question_asked").length || 0;
@@ -180,31 +196,38 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
 
     if (timeRange === "week") {
       // Initialize all days of the week with 0
-      const days = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
-      days.forEach((day) => {
+      const dayAbbreviations = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"];
+      
+      // Initialize with abbreviations
+      dayAbbreviations.forEach((day) => {
         questionsByDate[day] = 0;
       });
 
       // Count questions by day of week
-      data
-        .filter((a) => a.event_type === "question_asked")
-        .forEach((item) => {
-          const itemDate = new Date(item.created_at);
-          // Only count if within the time range
-          if (itemDate >= startDate && itemDate <= now) {
-            const dayKey = format(itemDate, "EEE", { locale: nl });
-            if (questionsByDate.hasOwnProperty(dayKey)) {
-              questionsByDate[dayKey] = (questionsByDate[dayKey] || 0) + 1;
-            }
-          }
-        });
+      // Note: data is already filtered by date in the query, so we don't need to filter again
+      const questionEvents = data.filter((a) => a.event_type === "question_asked");
+      
+      questionEvents.forEach((item) => {
+        const itemDate = new Date(item.created_at);
+        
+        // Get day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+        const dayOfWeek = itemDate.getDay();
+        // Convert to Monday = 0, Tuesday = 1, ..., Sunday = 6
+        const dayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        
+        if (dayIndex >= 0 && dayIndex < dayAbbreviations.length) {
+          const dayKey = dayAbbreviations[dayIndex];
+          questionsByDate[dayKey] = (questionsByDate[dayKey] || 0) + 1;
+        }
+      });
 
-      setWeeklyData(
-        days.map((day) => ({
-          day,
-          questions: questionsByDate[day] || 0,
-        }))
-      );
+      // Always set data, even if empty - ensures chart always renders
+      const chartData = dayAbbreviations.map((day) => ({
+        day,
+        questions: questionsByDate[day] || 0,
+      }));
+      
+      setWeeklyData(chartData);
     } else if (timeRange === "month") {
       // Initialize weeks (typically 4-5 weeks in a month)
       for (let i = 1; i <= 5; i++) {
@@ -212,19 +235,18 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       }
 
       // Count questions by week of month
-      data
-        .filter((a) => a.event_type === "question_asked")
-        .forEach((item) => {
-          const itemDate = new Date(item.created_at);
-          if (itemDate >= startDate && itemDate <= now) {
-            const monthStart = startOfMonth(itemDate);
-            const weekStart = startOfWeek(itemDate, { weekStartsOn: 1 });
-            const daysDiff = Math.floor((weekStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
-            const weekIndex = Math.floor(daysDiff / 7) + 1;
-            const weekKey = `Week ${Math.min(weekIndex, 5)}`;
-            questionsByDate[weekKey] = (questionsByDate[weekKey] || 0) + 1;
-          }
-        });
+      // Note: data is already filtered by date in the query, so we don't need to filter again
+      const questionEvents = data.filter((a) => a.event_type === "question_asked");
+      
+      questionEvents.forEach((item) => {
+        const itemDate = new Date(item.created_at);
+        const monthStart = startOfMonth(itemDate);
+        const weekStart = startOfWeek(itemDate, { weekStartsOn: 1 });
+        const daysDiff = Math.floor((weekStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+        const weekIndex = Math.floor(daysDiff / 7) + 1;
+        const weekKey = `Week ${Math.min(weekIndex, 5)}`;
+        questionsByDate[weekKey] = (questionsByDate[weekKey] || 0) + 1;
+      });
 
       setWeeklyData(
         Array.from({ length: 5 }, (_, i) => ({
@@ -235,22 +257,39 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
     } else {
       // Year view - show last 12 months
       const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
+      const monthMapping: Record<number, string> = {
+        0: "Jan",  // January
+        1: "Feb",  // February
+        2: "Mrt",  // March
+        3: "Apr",  // April
+        4: "Mei",  // May
+        5: "Jun",  // June
+        6: "Jul",  // July
+        7: "Aug",  // August
+        8: "Sep",  // September
+        9: "Okt",  // October
+        10: "Nov", // November
+        11: "Dec", // December
+      };
+      
       months.forEach((month) => {
         questionsByDate[month] = 0;
       });
 
       // Count questions by month
-      data
-        .filter((a) => a.event_type === "question_asked")
-        .forEach((item) => {
-          const itemDate = new Date(item.created_at);
-          if (itemDate >= startDate && itemDate <= now) {
-            const monthKey = format(itemDate, "MMM", { locale: nl });
-            if (questionsByDate.hasOwnProperty(monthKey)) {
-              questionsByDate[monthKey] = (questionsByDate[monthKey] || 0) + 1;
-            }
-          }
-        });
+      // Note: data is already filtered by date in the query, so we don't need to filter again
+      const questionEvents = data.filter((a) => a.event_type === "question_asked");
+      
+      questionEvents.forEach((item) => {
+        const itemDate = new Date(item.created_at);
+        // Get month index (0 = January, 11 = December)
+        const monthIndex = itemDate.getMonth();
+        const monthKey = monthMapping[monthIndex];
+        
+        if (monthKey && questionsByDate.hasOwnProperty(monthKey)) {
+          questionsByDate[monthKey] = (questionsByDate[monthKey] || 0) + 1;
+        }
+      });
 
       setWeeklyData(
         months.map((month) => ({
@@ -280,7 +319,11 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
   };
 
   const maxQuestions = useMemo(() => {
-    return Math.max(...weeklyData.map((d) => d.questions), 1);
+    if (weeklyData.length === 0) return 1;
+    const max = Math.max(...weeklyData.map((d) => d.questions));
+    // Ensure minimum of 1 to prevent division by zero
+    // If max is 0, use 1 so bars are still visible (at minimum height)
+    return max > 0 ? max : 1;
   }, [weeklyData]);
 
   return (
@@ -386,30 +429,46 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
           </div>
 
           <TooltipProvider>
-            <div className="flex items-end justify-between gap-2 h-48">
-              {weeklyData.map((data) => (
-                <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="w-full flex flex-col justify-end h-40">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div
-                          className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80 cursor-pointer"
-                          style={{
-                            height: `${(data.questions / maxQuestions) * 100}%`,
-                            minHeight: "8px",
-                          }}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="font-medium">{data.day}</p>
-                        <p className="text-sm">{data.questions} {data.questions === 1 ? 'vraag' : 'vragen'}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{data.day}</span>
-                </div>
-              ))}
-            </div>
+            {weeklyData.length === 0 ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-muted-foreground">Geen data beschikbaar</p>
+              </div>
+            ) : (
+              <div className="flex items-end justify-between gap-2 h-48">
+                {weeklyData.map((data) => {
+                  // Calculate bar height as percentage of max
+                  // Container height is h-40 = 160px (from Tailwind)
+                  const percentage = maxQuestions > 0 ? (data.questions / maxQuestions) : 0;
+                  // Convert to pixels, ensure minimum height for visibility
+                  const barHeightPx = data.questions > 0 
+                    ? Math.max(percentage * 160, 12) // At least 12px for bars with data
+                    : 4; // 4px for empty bars
+                  
+                  return (
+                    <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
+                      <div className="w-full flex flex-col justify-end" style={{ height: '160px' }}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80 cursor-pointer"
+                              style={{
+                                height: `${barHeightPx}px`,
+                                minHeight: data.questions > 0 ? "12px" : "4px",
+                              }}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="font-medium">{data.day}</p>
+                            <p className="text-sm">{data.questions} {data.questions === 1 ? 'vraag' : 'vragen'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{data.day}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </TooltipProvider>
         </div>
 

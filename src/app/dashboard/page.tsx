@@ -256,12 +256,20 @@ export default function DashboardPage() {
     if (!effectiveOrgId || !conversationId || !user) return;
 
     try {
-      const { data, error } = await supabase
+      // For admins viewing another organization, show all messages for that organization
+      // For regular users, only show their own messages
+      let query = supabase
         .from("chat_messages")
         .select("*")
         .eq("organization_id", effectiveOrgId)
-        .eq("user_id", user.id) // Filter by user_id to ensure unique history per user
-        .eq("conversation_id", conversationId as any)
+        .eq("conversation_id", conversationId as any);
+      
+      // Only filter by user_id for non-admins to ensure unique history per user
+      if (user.role !== "admin") {
+        query = query.eq("user_id", user.id);
+      }
+      
+      const { data, error } = await query
         .order("created_at", { ascending: true })
         .limit(50);
 
