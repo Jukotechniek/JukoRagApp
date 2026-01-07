@@ -183,14 +183,13 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
       });
 
       // Generate weekly/monthly data
-      generateTimeSeriesData(analyticsData || [], startDate);
+      generateTimeSeriesData(analyticsData || []);
     } catch (error) {
       console.error("Error loading analytics:", error);
     }
   };
 
-  const generateTimeSeriesData = (data: any[], startDate: Date) => {
-    const now = new Date();
+  const generateTimeSeriesData = (data: any[]) => {
     const questionsByDate: Record<string, number> = {};
 
     if (timeRange === "week") {
