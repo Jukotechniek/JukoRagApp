@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Bot } from "lucide-react";
 import { getAuthUrl } from "@/lib/url-utils";
@@ -10,7 +9,6 @@ import { getAuthUrl } from "@/lib/url-utils";
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [authUrl, setAuthUrl] = useState("/auth");
-  const router = useRouter();
 
   useEffect(() => {
     // Set auth URL on client side
@@ -46,20 +44,23 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              onClick={() => {
-                if (authUrl.startsWith('http')) {
-                  // Full URL - use window.location for cross-domain navigation
+            {authUrl.startsWith('http') ? (
+              <Button 
+                variant="ghost" 
+                onClick={(e) => {
+                  e.preventDefault();
                   window.location.href = authUrl;
-                } else {
-                  // Relative URL - use router
-                  router.push(authUrl);
-                }
-              }}
-            >
-              Inloggen
-            </Button>
+                }}
+              >
+                Inloggen
+              </Button>
+            ) : (
+              <Button variant="ghost" asChild>
+                <Link href={authUrl}>
+                  Inloggen
+                </Link>
+              </Button>
+            )}
             <a href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
               <Button variant="hero">Start Gratis</Button>
             </a>
@@ -100,22 +101,29 @@ export const Navbar = () => {
                 Hoe het werkt
               </a>
               <div className="flex flex-col gap-2 pt-4 border-t border-border/30">
-                <Button 
-                  variant="ghost" 
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setIsOpen(false);
-                    if (authUrl.startsWith('http')) {
-                      // Full URL - use window.location for cross-domain navigation
+                {authUrl.startsWith('http') ? (
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setIsOpen(false);
                       window.location.href = authUrl;
-                    } else {
-                      // Relative URL - use router
-                      router.push(authUrl);
-                    }
-                  }}
-                >
-                  Inloggen
-                </Button>
+                    }}
+                  >
+                    Inloggen
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start"
+                    asChild
+                  >
+                    <Link href={authUrl} onClick={() => setIsOpen(false)}>
+                      Inloggen
+                    </Link>
+                  </Button>
+                )}
                 <a 
                   href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
                   onClick={() => setIsOpen(false)}

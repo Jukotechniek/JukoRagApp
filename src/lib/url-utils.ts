@@ -58,13 +58,23 @@ export function getAuthUrl(): string {
 
   const hostname = window.location.hostname;
   
-  // Development - ALWAYS use relative path for localhost to prevent blocked redirects
-  // Check for localhost, 127.0.0.1, or any local development domain
+  // Development - ALWAYS use relative path for localhost, IP addresses, or invalid domains
+  // Check for localhost, 127.0.0.1, IP addresses, or any local development domain
   if (hostname === 'localhost' || 
       hostname === '127.0.0.1' || 
       hostname.includes('localhost') ||
       hostname.includes('127.0.0.1') ||
-      hostname.includes('.local')) {
+      hostname.includes('.local') ||
+      // Check if it's an IP address (IPv4: xxx.xxx.xxx.xxx)
+      /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+      // Check if it's an invalid domain (less than 2 parts, or contains numbers that aren't IP)
+      hostname.split('.').length < 2 ||
+      // Check if main domain would be invalid (like "68.123" which is not a valid domain)
+      (() => {
+        const mainDomain = getMainDomain();
+        // If main domain has less than 2 parts or looks like an IP, use relative path
+        return mainDomain.split('.').length < 2 || /^\d+\.\d+/.test(mainDomain);
+      })()) {
     return '/auth';
   }
 
@@ -74,7 +84,14 @@ export function getAuthUrl(): string {
   }
 
   // On main domain - redirect to app subdomain (production only)
+  // Only create full URL if we have a valid domain
   const mainDomain = getMainDomain();
-  return `${window.location.protocol}//app.${mainDomain}/auth`;
+  // Double check that mainDomain is a valid domain name
+  if (mainDomain && mainDomain.split('.').length >= 2 && !/^\d+\.\d+/.test(mainDomain)) {
+    return `${window.location.protocol}//app.${mainDomain}/auth`;
+  }
+  
+  // Fallback to relative path if domain is invalid
+  return '/auth';
 }
 

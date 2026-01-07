@@ -112,6 +112,7 @@ const OrganizationsView = () => {
       const { error } = await supabase.from("organizations").insert({
         name: newOrg.name,
         plan: newOrg.plan,
+        technicians_can_view_documents: false, // Default to false
       });
 
       if (error) throw error;

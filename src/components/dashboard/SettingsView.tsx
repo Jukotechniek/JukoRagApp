@@ -173,13 +173,6 @@ const SettingsView = () => {
     setMounted(true);
   }, []);
 
-  // Load organization settings
-  useEffect(() => {
-    if (user?.organization_id && (user.role === "manager" || user.role === "admin")) {
-      loadOrganizationSettings();
-    }
-  }, [user?.organization_id, user?.role]);
-
   const loadOrganizationSettings = async () => {
     if (!user?.organization_id) return;
 
@@ -194,9 +187,14 @@ const SettingsView = () => {
       if (error) throw error;
 
       if (data) {
+        // Handle null/undefined values - default to false
+        const canView = data.technicians_can_view_documents === true;
+        console.log("Loaded organization settings:", data.technicians_can_view_documents, "->", canView);
         setOrganizationSettings({
-          techniciansCanViewDocuments: data.technicians_can_view_documents || false,
+          techniciansCanViewDocuments: canView,
         });
+      } else {
+        console.log("No data returned from loadOrganizationSettings");
       }
     } catch (error: any) {
       console.error("Error loading organization settings:", error);
@@ -209,6 +207,45 @@ const SettingsView = () => {
       setLoadingOrgSettings(false);
     }
   };
+
+  // Load organization settings
+  useEffect(() => {
+    if (user?.organization_id && (user.role === "manager" || user.role === "admin")) {
+      loadOrganizationSettings();
+
+      // Subscribe to real-time updates (only for external changes, not our own)
+      const channel = supabase
+        .channel(`organization-settings-${user.organization_id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "organizations",
+            filter: `id=eq.${user.organization_id}`,
+          },
+          (payload) => {
+            // Only update if the value is different from current state
+            // This prevents overwriting our optimistic updates
+            const newValue = payload.new.technicians_can_view_documents === true;
+            setOrganizationSettings((prev) => {
+              // Only update if value actually changed
+              if (prev.techniciansCanViewDocuments !== newValue) {
+                return {
+                  techniciansCanViewDocuments: newValue,
+                };
+              }
+              return prev;
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user?.organization_id, user?.role]);
 
 
   return (
@@ -453,14 +490,33 @@ const SettingsView = () => {
                         });
 
                         try {
-                          const { error } = await supabase
+                          // First, try to update without .single() to avoid PGRST116 error
+                          const { data: updateData, error } = await supabase
                             .from("organizations")
                             .update({
                               technicians_can_view_documents: checked,
+                              updated_at: new Date().toISOString(),
                             })
-                            .eq("id", user.organization_id);
+                            .eq("id", user.organization_id)
+                            .select("technicians_can_view_documents");
 
                           if (error) throw error;
+
+                          // Check if update actually affected any rows
+                          if (!updateData || updateData.length === 0) {
+                            // Update didn't affect any rows - likely RLS policy issue
+                            console.error("Update failed: No rows affected. Check RLS policies.");
+                            throw new Error("Update niet toegestaan. Controleer uw rechten.");
+                          }
+
+                          // Verify the update was successful
+                          const actualValue = updateData[0].technicians_can_view_documents === true;
+                          console.log("Update successful, new value:", actualValue);
+                          
+                          // Ensure state matches what was actually saved
+                          setOrganizationSettings({
+                            techniciansCanViewDocuments: actualValue,
+                          });
 
                           toast({
                             title: "Instelling opgeslagen",

@@ -391,6 +391,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .insert({
           name: organizationName,
           plan: "starter", // Default to starter plan
+          technicians_can_view_documents: false, // Default to false
         })
         .select()
         .single();

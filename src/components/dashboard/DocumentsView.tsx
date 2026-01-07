@@ -122,16 +122,30 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   // Use selected organization ID or fall back to user's organization
   const effectiveOrgId = selectedOrganizationId || user?.organization_id || null;
 
-  // Check if user can edit (not a technician, or technician with permission)
+  // Check if user can edit (upload/delete documents)
+  // Technicians can upload/view when techniciansCanViewDocuments is true
+  // Managers and admins can always edit
   const canEdit = user?.role !== "technician" || techniciansCanViewDocuments;
-  const isReadOnly = user?.role === "technician" && techniciansCanViewDocuments;
-
-  // Load organization settings
+  const isReadOnly = false; // Not used anymore - technicians can edit when permission is granted
+  
+  // Debug logging
   useEffect(() => {
-    if (effectiveOrgId && user?.role === "technician") {
+    if (user?.role === "technician") {
+      console.log("Technician permissions:", {
+        role: user.role,
+        techniciansCanViewDocuments: techniciansCanViewDocuments,
+        canEdit: canEdit,
+        isReadOnly: isReadOnly
+      });
+    }
+  }, [user?.role, techniciansCanViewDocuments, canEdit, isReadOnly]);
+
+  // Load organization settings - load for all users to check permissions
+  useEffect(() => {
+    if (effectiveOrgId) {
       loadOrganizationSettings();
     }
-  }, [effectiveOrgId, user?.role]);
+  }, [effectiveOrgId]);
 
   const loadOrganizationSettings = async () => {
     if (!effectiveOrgId) return;
@@ -143,10 +157,22 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         .eq("id", effectiveOrgId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error loading organization settings:", error);
+        throw error;
+      }
 
       if (data) {
-        setTechniciansCanViewDocuments(data.technicians_can_view_documents || false);
+        // Handle null/undefined values - default to false
+        const canView = data.technicians_can_view_documents === true;
+        console.log("Organization setting loaded:", {
+          raw: data.technicians_can_view_documents,
+          canView: canView,
+          organizationId: effectiveOrgId
+        });
+        setTechniciansCanViewDocuments(canView);
+      } else {
+        console.log("No organization data returned for:", effectiveOrgId);
       }
     } catch (error) {
       console.error("Error loading organization settings:", error);
@@ -309,11 +335,11 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   const handleFileSelect = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0 || !effectiveOrgId || !user) return;
 
-    // Check if user can edit - technicians can never upload, only view
-    if (user.role === "technician") {
+    // Check if user can edit - use canEdit which respects techniciansCanViewDocuments setting
+    if (!canEdit) {
       toast({
         title: "Geen toegang",
-        description: "Monteurs kunnen geen documenten uploaden. Neem contact op met uw manager.",
+        description: "U heeft geen toestemming om documenten te uploaden.",
         variant: "destructive",
       });
       return;
@@ -527,7 +553,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         });
       }
     }
-  }, [toast, user, effectiveOrgId, documents]);
+  }, [toast, user, effectiveOrgId, documents, canEdit, loadDocuments]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -788,7 +814,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             Documenten
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground">
-            {documents.length} documenten{isReadOnly && " (Alleen bekijken)"}
+            {documents.length} documenten{user?.role === "technician" && !techniciansCanViewDocuments && " (Geen toegang)"}
           </p>
         </div>
         {canEdit && (

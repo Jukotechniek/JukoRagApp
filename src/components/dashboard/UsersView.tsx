@@ -60,6 +60,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
   const [users, setUsers] = useState<User[]>([]);
   const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
+  const [editProfileName, setEditProfileName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "technician" as "manager" | "technician" });
@@ -305,11 +306,11 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
     if (!currentAuthUser) return;
 
     try {
+      // For managers, only update name - email and organization cannot be changed
       const { error } = await supabase
         .from("users")
         .update({
-          name: currentAuthUser.name, // In production, get from form
-          email: currentAuthUser.email,
+          name: editProfileName || currentAuthUser.name,
         })
         .eq("id", currentAuthUser.id);
 
@@ -320,6 +321,8 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         description: "Uw profiel is succesvol bijgewerkt.",
       });
       setEditProfileDialogOpen(false);
+      // Reload users to show updated name
+      loadUsers();
     } catch (error: any) {
       console.error("Error updating profile:", error);
       toast({
@@ -379,7 +382,14 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
               <p className="text-sm text-muted-foreground">{currentUser.email}</p>
               <p className="text-xs text-primary mt-1">{currentUser.lastActive}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setEditProfileDialogOpen(true)}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setEditProfileName(currentUser.name);
+                setEditProfileDialogOpen(true);
+              }}
+            >
               <Edit className="w-4 h-4 mr-2" />
               Profiel Bewerken
             </Button>
@@ -550,15 +560,32 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Volledige naam</Label>
-              <Input id="edit-name" defaultValue={currentUser.name} />
+              <Input 
+                id="edit-name" 
+                value={editProfileName}
+                onChange={(e) => setEditProfileName(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-email">Email</Label>
-              <Input id="edit-email" type="email" defaultValue={currentUser.email} />
+              <Input 
+                id="edit-email" 
+                type="email" 
+                value={currentUser.email}
+                readOnly
+                className="bg-muted cursor-not-allowed"
+                disabled
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-org">Organisatie</Label>
-              <Input id="edit-org" defaultValue={currentAuthUser?.organization_id || "VDL Technics"} />
+              <Input 
+                id="edit-org" 
+                value={currentAuthUser?.organization_name || "Geen organisatie"}
+                readOnly
+                className="bg-muted cursor-not-allowed"
+                disabled
+              />
             </div>
           </div>
           <DialogFooter>
