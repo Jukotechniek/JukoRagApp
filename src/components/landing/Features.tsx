@@ -1,4 +1,4 @@
-import { Upload, MessageSquare, Users, Zap, BarChart } from "lucide-react";
+import { Upload, MessageSquare, Users, Zap, BarChart, Link2 } from "lucide-react";
 
 const features = [
   {
@@ -25,6 +25,11 @@ const features = [
     icon: BarChart,
     title: "Inzichten",
     description: "Bekijk welke vragen het meest gesteld worden en optimaliseer uw documentatie.",
+  },
+  {
+    icon: Link2,
+    title: "Klikbare Bronvermelding",
+    description: "Elk antwoord bevat directe verwijzingen naar de bronnen. Klik door naar de exacte locatie in uw documenten.",
   },
 ];
 

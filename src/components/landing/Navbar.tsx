@@ -61,8 +61,8 @@ export const Navbar = () => {
                 </Link>
               </Button>
             )}
-            <a href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement.">
-              <Button variant="hero">Start Gratis</Button>
+            <a href="mailto:info@jukotechniek.nl?subject=Contact Aanvraag&body=Ik ben geïnteresseerd in JukoBot.">
+              <Button variant="hero">Contact</Button>
             </a>
           </div>
 
@@ -125,11 +125,11 @@ export const Navbar = () => {
                   </Button>
                 )}
                 <a 
-                  href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
+                  href="mailto:info@jukotechniek.nl?subject=Contact Aanvraag&body=Ik ben geïnteresseerd in JukoBot."
                   onClick={() => setIsOpen(false)}
                 >
                   <Button variant="hero" className="w-full">
-                    Start Gratis
+                    Contact
                   </Button>
                 </a>
               </div>

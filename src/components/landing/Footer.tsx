@@ -27,11 +27,11 @@ export const Footer = () => {
               </a>
               <a href="tel:+31201234567" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="w-4 h-4" />
-                +31 20 123 4567
+                +31 22 035459
               </a>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <MapPin className="w-4 h-4" />
-                Amsterdam, Nederland
+                Kootwijkerbroek, Nederland
               </div>
             </div>
           </div>
@@ -82,8 +82,11 @@ export const Footer = () => {
 
         {/* Bottom */}
         <div className="pt-8 border-t border-border/30 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-2">
             © {new Date().getFullYear()} Juko bot. Alle rechten voorbehouden.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            JukoBot is onderdeel van Juko Techniek B.V.
           </p>
         </div>
       </div>

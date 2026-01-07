@@ -127,7 +127,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   // Managers and admins can always edit
   const canEdit = user?.role !== "technician" || techniciansCanViewDocuments;
   const isReadOnly = false; // Not used anymore - technicians can edit when permission is granted
-  
+
   // Debug logging
   useEffect(() => {
     if (user?.role === "technician") {

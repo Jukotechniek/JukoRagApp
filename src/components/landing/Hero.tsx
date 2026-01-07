@@ -1,7 +1,18 @@
+"use client";
+
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, MessageSquare, FileText, Zap } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArrowRight, MessageSquare, FileText, Zap, ExternalLink, FileText as FileTextIcon } from "lucide-react";
 
 export const Hero = () => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20 pb-32">
       {/* Background Effects */}
@@ -45,11 +56,11 @@ export const Hero = () => {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-slide-up" style={{ animationDelay: "0.3s" }}>
             <a 
-              href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in een abonnement."
+              href="mailto:info@jukotechniek.nl?subject=Contact Aanvraag&body=Ik ben geïnteresseerd in JukoBot."
               className="group"
             >
               <Button variant="hero" size="xl" className="group">
-                Start Gratis
+                Neem Contact Op
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </a>
@@ -102,7 +113,19 @@ export const Hero = () => {
                 <div className="flex justify-start">
                   <div className="bg-secondary/80 dark:bg-secondary rounded-2xl rounded-bl-md px-5 py-4 max-w-md border border-border/50 dark:border-transparent">
                     <p className="text-sm leading-relaxed text-secondary-foreground">
-                      Volgens de <span className="text-primary font-medium">HCX-200 specificaties (pagina 23)</span>, is de maximale werkdruk 250 bar. 
+                      Volgens de{" "}
+                      <a 
+                        href="#" 
+                        className="inline-flex items-center gap-1 text-primary font-medium hover:underline underline-offset-2 cursor-pointer transition-colors hover:text-primary/80"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsDialogOpen(true);
+                        }}
+                      >
+                        HCX-200 specificaties (pagina 23)
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      , is de maximale werkdruk 250 bar. 
                       Let op: bij temperaturen boven 60°C moet u de druk verlagen naar 200 bar.
                     </p>
                   </div>
@@ -122,6 +145,50 @@ export const Hero = () => {
           </div>
         </div>
       </div>
+
+      {/* Source Reference Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              HCX-200 Specificaties
+            </DialogTitle>
+            <DialogDescription>
+              Pagina 23 - Maximale werkdruk specificaties
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div className="bg-secondary/50 rounded-lg p-4 border border-border/50">
+              <h4 className="font-semibold text-foreground mb-2">Maximale Werkdruk</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Volgens de specificaties op pagina 23 van het HCX-200 document:
+              </p>
+              <ul className="space-y-2 text-sm text-foreground">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-1">•</span>
+                  <span><strong>Standaard:</strong> 250 bar bij temperaturen tot 60°C</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-1">•</span>
+                  <span><strong>Bij hoge temperatuur:</strong> 200 bar bij temperaturen boven 60°C</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-1">•</span>
+                  <span><strong>Let op:</strong> Overschrijd deze waarden niet om schade te voorkomen</span>
+                </li>
+              </ul>
+            </div>
+            <div className="text-xs text-muted-foreground bg-primary/5 rounded-lg p-3 border border-primary/10">
+              <p className="font-medium text-foreground mb-1">💡 Voorbeeld functionaliteit</p>
+              <p>
+                In de echte applicatie zou u hier direct naar pagina 23 van het document kunnen navigeren 
+                of het document kunnen openen op de exacte locatie waar deze informatie staat.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 };
