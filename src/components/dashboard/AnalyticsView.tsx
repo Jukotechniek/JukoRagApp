@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { subWeeks, subMonths, format, startOfWeek, startOfMonth } from "date-fns";
-import { nl } from "date-fns/locale";
+import { startOfWeek, startOfMonth } from "date-fns";
 
 interface AnalyticsViewProps {
   currentRole: "admin" | "manager" | "technician";
