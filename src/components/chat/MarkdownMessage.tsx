@@ -20,13 +20,6 @@ interface MarkdownMessageProps {
   className?: string;
 }
 
-interface CitationInfo {
-  filename: string;
-  pageNumber: number;
-  fullText: string;
-  pageNumberIndex?: number; // Position of this page number in the original text
-}
-
 // Parse citation patterns like "(Bron: FILENAME.pdf, Pagina: NUMBER)" or variations
 // Handles multiple citations separated by semicolons: (Bron: file1.pdf, Pagina: 1; Bron: file2.pdf, Pagina: 2)
 // Returns array of all citation matches with their page numbers
