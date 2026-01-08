@@ -47,9 +47,21 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
   const effectiveOrgId = selectedOrganizationId || user?.organization_id;
 
   useEffect(() => {
-    if (user) {
-      loadTokenUsage();
+    if (!user) return;
+    if (!effectiveOrgId) {
+      setLoading(false);
+      setTokenUsage([]);
+      setStats({
+        totalTokens: 0,
+        totalCost: 0,
+        chatTokens: 0,
+        documentProcessingTokens: 0,
+        chatCost: 0,
+        documentProcessingCost: 0,
+      });
+      return;
     }
+    loadTokenUsage();
   }, [user, timeRange, effectiveOrgId]);
 
   const loadTokenUsage = async () => {
@@ -138,6 +150,14 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">Laden...</div>
+        </div>
+      );
+    }
+
+    if (!effectiveOrgId) {
+      return (
+        <div className="glass rounded-xl p-6">
+          <p className="text-muted-foreground">Selecteer een organisatie om token usage te bekijken.</p>
         </div>
       );
     }

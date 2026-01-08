@@ -30,6 +30,7 @@ import OrganizationsView from "@/components/dashboard/OrganizationsView";
 import { getHomeUrl } from "@/lib/url-utils";
 import UsersView from "@/components/dashboard/UsersView";
 import AnalyticsView from "@/components/dashboard/AnalyticsView";
+import AdminAnalyticsView from "@/components/dashboard/AdminAnalyticsView";
 import DocumentsView from "@/components/dashboard/DocumentsView";
 import BillingView from "@/components/dashboard/BillingView";
 import SettingsView from "@/components/dashboard/SettingsView";
@@ -55,7 +56,11 @@ export default function DashboardPage() {
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>(null);
+  // Admin org selector:
+  // - ""   = not chosen yet (we'll default to first org when list loads)
+  // - null = all organizations
+  // - "<uuid>" = specific organization
+  const [adminSelectedOrgId, setAdminSelectedOrgId] = useState<string | null>("");
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
@@ -108,7 +113,10 @@ export default function DashboardPage() {
         setOrganizations(orgs);
         // Set first organization as default if none selected
         setAdminSelectedOrgId((prev) => {
-          if (!prev && orgs[0]) {
+          // If user explicitly selected "all organizations" (null), keep it.
+          if (prev === null) return null;
+          // If still unset (""), default to first org to keep per-org views working.
+          if (prev === "" && orgs[0]) {
             console.log("Setting default organization to:", orgs[0].id, orgs[0].name);
             return orgs[0].id;
           }
@@ -154,7 +162,12 @@ export default function DashboardPage() {
   }, [user?.organization_id, loadOrganizationSettings]);
 
   // Get effective organization ID (selected org for admin, user's org for others)
-  const effectiveOrgId = user?.role === "admin" ? (adminSelectedOrgId || null) : (user?.organization_id || null);
+  const effectiveOrgId =
+    user?.role === "admin"
+      ? adminSelectedOrgId === null
+        ? null
+        : adminSelectedOrgId || null
+      : user?.organization_id || null;
 
 
   // Generate a unique conversation ID using UUID v4 with additional guarantees
@@ -315,6 +328,7 @@ export default function DashboardPage() {
     { id: "users", icon: Users, label: "Gebruikers", roles: ["admin", "manager"] },
     { id: "organizations", icon: Building, label: "Organisaties", roles: ["admin"] },
     { id: "analytics", icon: BarChart, label: "Analytics", roles: ["admin", "manager"] },
+    { id: "admin-analytics", icon: BarChart, label: "Admin Analytics", roles: ["admin"] },
     { id: "token-usage", icon: Coins, label: "Token Gebruik", roles: ["admin"] },
     { id: "billing", icon: CreditCard, label: "Facturatie", roles: ["admin", "manager"] },
     { id: "settings", icon: Settings, label: "Instellingen", roles: ["admin", "manager"] },
@@ -699,8 +713,13 @@ export default function DashboardPage() {
               <Building className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Bekijk als:</span>
               <Select 
-                value={adminSelectedOrgId || ""} 
+                value={adminSelectedOrgId === null ? "__all__" : (adminSelectedOrgId || "")} 
                 onValueChange={(value) => {
+                  if (value === "__all__") {
+                    console.log("Admin selected organization: ALL");
+                    setAdminSelectedOrgId(null);
+                    return;
+                  }
                   console.log("Admin selected organization:", value);
                   setAdminSelectedOrgId(value);
                 }}
@@ -709,6 +728,7 @@ export default function DashboardPage() {
                   <SelectValue placeholder="Selecteer organisatie" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__all__">Alle organisaties</SelectItem>
                   {organizations.map((org) => (
                     <SelectItem key={org.id} value={org.id}>
                       {org.name}
@@ -869,6 +889,12 @@ export default function DashboardPage() {
           {activeTab === "analytics" && (
             <div className="p-4 lg:p-8">
               <AnalyticsView currentRole={currentRole} selectedOrganizationId={effectiveOrgId} />
+            </div>
+          )}
+
+          {activeTab === "admin-analytics" && (
+            <div className="p-4 lg:p-8">
+              <AdminAnalyticsView />
             </div>
           )}
 

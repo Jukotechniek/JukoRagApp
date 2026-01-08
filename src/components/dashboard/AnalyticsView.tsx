@@ -448,12 +448,21 @@ const AnalyticsView = ({ currentRole, selectedOrganizationId }: AnalyticsViewPro
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
-                              className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80 cursor-pointer"
+                              className="w-full relative cursor-pointer"
                               style={{
                                 height: `${barHeightPx}px`,
                                 minHeight: data.questions > 0 ? "12px" : "4px",
                               }}
-                            />
+                            >
+                              {data.questions > 0 && (
+                                <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground tabular-nums">
+                                  {data.questions}
+                                </div>
+                              )}
+                              <div
+                                className="w-full h-full bg-gradient-to-t from-primary to-primary/60 rounded-t-lg transition-all hover:from-primary hover:to-primary/80"
+                              />
+                            </div>
                           </TooltipTrigger>
                           <TooltipContent>
                             <p className="font-medium">{data.day}</p>
