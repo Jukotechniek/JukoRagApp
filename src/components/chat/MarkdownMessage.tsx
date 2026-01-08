@@ -28,33 +28,36 @@ interface CitationInfo {
 }
 
 // Parse citation patterns like "(Bron: FILENAME.pdf, Pagina: NUMBER)" or variations
-// Returns array of citations to handle multiple page numbers
-function parseCitations(text: string): Array<{ citation: CitationInfo; pageNumbers: number[] }> {
-  const results: Array<{ citation: CitationInfo; pageNumbers: number[] }> = [];
+// Handles multiple citations separated by semicolons: (Bron: file1.pdf, Pagina: 1; Bron: file2.pdf, Pagina: 2)
+// Returns array of all citation matches with their page numbers
+function parseCitations(text: string): Array<{ filename: string; pageNumbers: number[]; fullMatch: string; matchIndex: number }> {
+  const results: Array<{ filename: string; pageNumbers: number[]; fullMatch: string; matchIndex: number }> = [];
   
   // Pattern to match: Bron: FILENAME.pdf, Pagina: NUMBER1, NUMBER2, NUMBER3, etc.
-  // Handles variations with/without parentheses, different spacing
-  const pattern = /\(?Bron:\s*([^,)]+\.pdf)\s*[,)]?\s*Pagina:?\s*([\d\s,]+)\)?/gi;
+  // Handles multiple citations separated by semicolons
+  // Uses non-greedy matching and captures everything until the next semicolon or closing paren
+  const pattern = /Bron:\s*([^,;)]+\.pdf)\s*[,;]?\s*Pagina:?\s*([^;)]+?)(?:\s*;|\s*\)|$)/gi;
   
   let match;
   while ((match = pattern.exec(text)) !== null) {
     const filename = match[1].trim();
-    const pageNumbersStr = match[2].trim();
+    let pageNumbersStr = match[2].trim();
     
-    // Extract all page numbers (can be comma or space separated)
+    // Remove any trailing punctuation
+    pageNumbersStr = pageNumbersStr.replace(/[;,) ]+$/, '').trim();
+    
+    // Extract all page numbers (can be comma, semicolon, or space separated)
     const pageNumbers = pageNumbersStr
-      .split(/[,\s]+/)
+      .split(/[,\s;]+/)
       .map(p => parseInt(p.trim(), 10))
       .filter(p => !isNaN(p) && p > 0);
     
     if (filename && pageNumbers.length > 0) {
       results.push({
-        citation: {
-          filename,
-          pageNumber: pageNumbers[0], // First page number for backwards compatibility
-          fullText: match[0],
-        },
+        filename,
         pageNumbers,
+        fullMatch: match[0],
+        matchIndex: match.index,
       });
     }
   }
@@ -72,52 +75,62 @@ function remarkCitations() {
       const citationResults = parseCitations(text);
 
       if (citationResults.length > 0) {
-        // Process citations in reverse order to maintain correct indices
-        const sortedResults = [...citationResults].sort((a, b) => {
-          const aIndex = text.indexOf(a.citation.fullText);
-          const bIndex = text.indexOf(b.citation.fullText);
-          return bIndex - aIndex; // Reverse order
-        });
+        // Process citations in reverse order to maintain correct string indices
+        const sortedResults = [...citationResults].sort((a, b) => b.matchIndex - a.matchIndex);
 
         let processedText = text;
 
-        // Process each citation
-        for (const { citation, pageNumbers } of sortedResults) {
-          const citationIndex = processedText.indexOf(citation.fullText);
-          if (citationIndex === -1) continue;
+        // Process each citation match
+        for (const { filename, pageNumbers, fullMatch } of sortedResults) {
+          const matchIndex = processedText.lastIndexOf(fullMatch);
+          if (matchIndex === -1) continue;
 
-          // Find "Pagina:" in the citation
-          const paginaIndex = citation.fullText.toLowerCase().indexOf('pagina');
+          // Find "Pagina:" in the match
+          const paginaIndex = fullMatch.toLowerCase().indexOf('pagina');
           if (paginaIndex === -1) continue;
 
           // Get the part before "Pagina:"
-          const beforePagina = citation.fullText.substring(0, paginaIndex);
+          const beforePagina = fullMatch.substring(0, paginaIndex);
           
-          // Get the part after "Pagina:" and extract page numbers
-          const afterPagina = citation.fullText.substring(paginaIndex);
+          // Get the part after "Pagina:"
+          const afterPagina = fullMatch.substring(paginaIndex);
           const paginaMatch = afterPagina.match(/pagina:?\s*(.+)/i);
           if (!paginaMatch) continue;
 
           const pageNumbersPart = paginaMatch[1].trim();
           
           // Replace each page number with a clickable link
+          // We need to replace them one by one, processing in reverse order to maintain indices
           let replacedPageNumbers = pageNumbersPart;
+          const sortedPageNumbers = [...pageNumbers].sort((a, b) => b - a);
+          
+          for (const pageNum of sortedPageNumbers) {
+            const pageNumStr = pageNum.toString();
+            // Create a unique placeholder first to avoid replacing already replaced numbers
+            const placeholder = `__PAGE_${pageNum}_PLACEHOLDER__`;
+            
+            // Replace the page number with placeholder (using word boundary to match whole numbers)
+            replacedPageNumbers = replacedPageNumbers.replace(
+              new RegExp(`\\b${pageNumStr}\\b(?=\\s*[;,\\)]|\\s*$)`, 'g'),
+              placeholder
+            );
+          }
+          
+          // Now replace placeholders with actual HTML links
           for (const pageNum of pageNumbers) {
             const pageNumStr = pageNum.toString();
-            // Replace the page number with a link, but only if it's a whole word/number
-            replacedPageNumbers = replacedPageNumbers.replace(
-              new RegExp(`\\b${pageNumStr}\\b`, 'g'),
-              `<span data-citation-filename="${citation.filename}" data-citation-page="${pageNum}" class="citation-page-link text-red-600 dark:text-red-400 cursor-pointer hover:underline font-medium">${pageNumStr}</span>`
-            );
+            const placeholder = `__PAGE_${pageNum}_PLACEHOLDER__`;
+            const linkHtml = `<span data-citation-filename="${filename}" data-citation-page="${pageNum}" class="citation-page-link text-red-600 dark:text-red-400 cursor-pointer hover:underline font-medium">${pageNumStr}</span>`;
+            replacedPageNumbers = replacedPageNumbers.replace(placeholder, linkHtml);
           }
 
           // Rebuild the citation
           const newCitation = beforePagina + 'Pagina: ' + replacedPageNumbers;
           
           // Replace in processedText
-          processedText = processedText.substring(0, citationIndex) + 
+          processedText = processedText.substring(0, matchIndex) + 
                           newCitation + 
-                          processedText.substring(citationIndex + citation.fullText.length);
+                          processedText.substring(matchIndex + fullMatch.length);
         }
 
         // Now split processedText into text and HTML nodes
