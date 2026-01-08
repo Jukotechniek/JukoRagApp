@@ -160,7 +160,7 @@ export default function DashboardPage() {
   // Generate a unique conversation ID using UUID v4 with additional guarantees
   // UUID v4 is already extremely unique (1 in 2^122 chance of collision)
   // We add user_id hash and timestamp to the random bytes for extra uniqueness
-  const createConversationId = () => {
+  const createConversationId = useCallback(() => {
     // Get user ID for additional uniqueness context
     const userId = user?.id || 'anonymous';
     const timestamp = Date.now();
@@ -216,7 +216,7 @@ export default function DashboardPage() {
       "-" +
       b.slice(20, 32)
     );
-  };
+  }, [user?.id]);
 
   // Generate new conversation ID per organization on each mount/login
   // This ensures each session starts with a fresh chat (no persistent history)
@@ -230,7 +230,7 @@ export default function DashboardPage() {
     // This ensures chat is empty on each login
     const newId = createConversationId();
     setConversationId(newId);
-  }, [effectiveOrgId]);
+  }, [effectiveOrgId, createConversationId]);
 
   // Load chat messages
   const loadMessages = useCallback(async () => {
@@ -300,6 +300,30 @@ export default function DashboardPage() {
     
     return () => clearTimeout(timeoutId);
   }, [messages]);
+
+  // Calculate menu items - MUST be before early return to maintain hook order
+  const currentRole: UserRole = user?.role || "technician";
+  
+  const menuItems = useMemo(() => [
+    { id: "chat", icon: MessageSquare, label: "Chat", roles: ["admin", "manager", "technician"] },
+    { 
+      id: "documents", 
+      icon: FileText, 
+      label: "Documenten", 
+      roles: ["admin", "manager", ...(techniciansCanViewDocuments ? ["technician"] : [])] 
+    },
+    { id: "users", icon: Users, label: "Gebruikers", roles: ["admin", "manager"] },
+    { id: "organizations", icon: Building, label: "Organisaties", roles: ["admin"] },
+    { id: "analytics", icon: BarChart, label: "Analytics", roles: ["admin", "manager"] },
+    { id: "token-usage", icon: Coins, label: "Token Gebruik", roles: ["admin"] },
+    { id: "billing", icon: CreditCard, label: "Facturatie", roles: ["admin", "manager"] },
+    { id: "settings", icon: Settings, label: "Instellingen", roles: ["admin", "manager"] },
+  ], [techniciansCanViewDocuments]);
+
+  const filteredMenuItems = useMemo(() => 
+    menuItems.filter((item) => item.roles.includes(currentRole)),
+    [menuItems, currentRole]
+  );
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !effectiveOrgId || !conversationId || isSending) return;
@@ -575,29 +599,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const currentRole: UserRole = user.role;
-
-  const menuItems = useMemo(() => [
-    { id: "chat", icon: MessageSquare, label: "Chat", roles: ["admin", "manager", "technician"] },
-    { 
-      id: "documents", 
-      icon: FileText, 
-      label: "Documenten", 
-      roles: ["admin", "manager", ...(techniciansCanViewDocuments ? ["technician"] : [])] 
-    },
-    { id: "users", icon: Users, label: "Gebruikers", roles: ["admin", "manager"] },
-    { id: "organizations", icon: Building, label: "Organisaties", roles: ["admin"] },
-    { id: "analytics", icon: BarChart, label: "Analytics", roles: ["admin", "manager"] },
-    { id: "token-usage", icon: Coins, label: "Token Gebruik", roles: ["admin"] },
-    { id: "billing", icon: CreditCard, label: "Facturatie", roles: ["admin", "manager"] },
-    { id: "settings", icon: Settings, label: "Instellingen", roles: ["admin", "manager"] },
-  ], [techniciansCanViewDocuments]);
-
-  const filteredMenuItems = useMemo(() => 
-    menuItems.filter((item) => item.roles.includes(currentRole)),
-    [menuItems, currentRole]
-  );
 
   return (
     <div className="min-h-screen flex">
