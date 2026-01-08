@@ -47,6 +47,17 @@ export function PdfViewerDialog({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Lock body scroll when dialog opens on mobile
+  // MUST be before early return to maintain hook order
+  useEffect(() => {
+    if (open && isMobile) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [open, isMobile]);
 
   const handleOpenInNewTab = () => {
     if (pdfUrl) {
@@ -60,17 +71,6 @@ export function PdfViewerDialog({
   if (!pdfUrl) {
     return null;
   }
-
-  // Lock body scroll when dialog opens on mobile
-  useEffect(() => {
-    if (open && isMobile) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [open, isMobile]);
 
   return (
     <Dialog 
