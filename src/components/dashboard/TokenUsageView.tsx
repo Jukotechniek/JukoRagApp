@@ -93,7 +93,11 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
       const totalCost = usage.reduce((sum, item) => sum + Number(item.cost_usd || 0), 0);
       
       const chatData = usage.filter((item) => item.operation_type === 'chat');
-      const docData = usage.filter((item) => item.operation_type === 'document_processing');
+      // Include both 'document_processing' and 'embedding' in document processing stats
+      // Embeddings are generated for RAG/document retrieval, so they're part of document processing
+      const docData = usage.filter((item) => 
+        item.operation_type === 'document_processing' || item.operation_type === 'embedding'
+      );
 
       setStats({
         totalTokens,
