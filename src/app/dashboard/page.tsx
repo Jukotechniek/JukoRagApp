@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -93,20 +93,41 @@ export default function DashboardPage() {
   }, [user, supabaseUser, loading, router]);
 
   // Load organizations for admin selector
+  const loadOrganizations = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const orgs = data as { id: string; name: string }[];
+        console.log("Organizations loaded:", orgs);
+        setOrganizations(orgs);
+        // Set first organization as default if none selected
+        setAdminSelectedOrgId((prev) => {
+          if (!prev && orgs[0]) {
+            console.log("Setting default organization to:", orgs[0].id, orgs[0].name);
+            return orgs[0].id;
+          }
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error("Error loading organizations:", error);
+    }
+  }, []);
+
   useEffect(() => {
     if (user?.role === "admin") {
       loadOrganizations();
     }
-  }, [user?.role]);
+  }, [user?.role, loadOrganizations]);
 
   // Load organization settings to check if technicians can view documents
-  useEffect(() => {
-    if (user?.organization_id) {
-      loadOrganizationSettings();
-    }
-  }, [user?.organization_id]);
-
-  const loadOrganizationSettings = async () => {
+  const loadOrganizationSettings = useCallback(async () => {
     if (!user?.organization_id) return;
 
     try {
@@ -124,31 +145,13 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Error loading organization settings:", error);
     }
-  };
+  }, [user?.organization_id]);
 
-  const loadOrganizations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("id, name")
-        .order("name", { ascending: true });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const orgs = data as { id: string; name: string }[];
-        console.log("Organizations loaded:", orgs);
-        setOrganizations(orgs);
-        // Set first organization as default if none selected
-        if (!adminSelectedOrgId && orgs[0]) {
-          console.log("Setting default organization to:", orgs[0].id, orgs[0].name);
-          setAdminSelectedOrgId(orgs[0].id);
-        }
-      }
-    } catch (error) {
-      console.error("Error loading organizations:", error);
+  useEffect(() => {
+    if (user?.organization_id) {
+      loadOrganizationSettings();
     }
-  };
+  }, [user?.organization_id, loadOrganizationSettings]);
 
   // Get effective organization ID (selected org for admin, user's org for others)
   const effectiveOrgId = user?.role === "admin" ? (adminSelectedOrgId || null) : (user?.organization_id || null);
@@ -230,29 +233,7 @@ export default function DashboardPage() {
   }, [effectiveOrgId]);
 
   // Load chat messages
-  useEffect(() => {
-    if (effectiveOrgId && conversationId && activeTab === "chat") {
-      loadMessages();
-    }
-  }, [effectiveOrgId, activeTab, conversationId]);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    // Use setTimeout to ensure DOM is updated before scrolling
-    const timeoutId = setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'smooth',
-          block: 'end',
-          inline: 'nearest'
-        });
-      }
-    }, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, [messages]);
-
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     if (!effectiveOrgId || !conversationId || !user) return;
 
     try {
@@ -296,7 +277,29 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Error loading messages:", error);
     }
-  };
+  }, [effectiveOrgId, conversationId, user]);
+
+  useEffect(() => {
+    if (effectiveOrgId && conversationId && activeTab === "chat") {
+      loadMessages();
+    }
+  }, [effectiveOrgId, activeTab, conversationId, loadMessages]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    // Use setTimeout to ensure DOM is updated before scrolling
+    const timeoutId = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'end',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [messages]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !effectiveOrgId || !conversationId || isSending) return;
@@ -575,7 +578,7 @@ export default function DashboardPage() {
 
   const currentRole: UserRole = user.role;
 
-  const menuItems = [
+  const menuItems = useMemo(() => [
     { id: "chat", icon: MessageSquare, label: "Chat", roles: ["admin", "manager", "technician"] },
     { 
       id: "documents", 
@@ -589,10 +592,11 @@ export default function DashboardPage() {
     { id: "token-usage", icon: Coins, label: "Token Gebruik", roles: ["admin"] },
     { id: "billing", icon: CreditCard, label: "Facturatie", roles: ["admin", "manager"] },
     { id: "settings", icon: Settings, label: "Instellingen", roles: ["admin", "manager"] },
-  ];
+  ], [techniciansCanViewDocuments]);
 
-  const filteredMenuItems = menuItems.filter((item) =>
-    item.roles.includes(currentRole)
+  const filteredMenuItems = useMemo(() => 
+    menuItems.filter((item) => item.roles.includes(currentRole)),
+    [menuItems, currentRole]
   );
 
   return (
