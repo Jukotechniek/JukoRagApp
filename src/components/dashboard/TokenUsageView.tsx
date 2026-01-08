@@ -9,7 +9,7 @@ import {
   FileText,
   MessageSquare
 } from "lucide-react";
-import { format, subDays, subWeeks, subMonths } from "date-fns";
+import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 
 interface TokenUsageViewProps {
