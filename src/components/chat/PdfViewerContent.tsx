@@ -23,7 +23,14 @@ export function PDFViewerContent({ pdfUrl, initialPage }: PDFViewerContentProps)
 
   return (
     <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-      <div style={{ height: '100%', width: '100%' }}>
+      <div 
+        style={{ height: '100%', width: '100%', position: 'relative' }}
+        onClick={(e) => {
+          // Prevent clicks from bubbling up to parent elements
+          // This ensures PDF viewer interactions don't interfere with chat
+          e.stopPropagation();
+        }}
+      >
         <Viewer
           fileUrl={pdfUrl}
           plugins={[defaultLayoutPluginInstance]}

@@ -225,12 +225,13 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
       }
     };
 
-    container.addEventListener('click', handleClick);
+    // Use capture phase to ensure we catch clicks before PDF viewer
+    container.addEventListener('click', handleClick, true);
     
     return () => {
-      container.removeEventListener('click', handleClick);
+      container.removeEventListener('click', handleClick, true);
     };
-  }, [handleCitationClick, content]);
+  }, [handleCitationClick, content, pdfDialogOpen]);
 
   return (
     <>
@@ -359,7 +360,18 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
       
       <PdfViewerDialog
         open={pdfDialogOpen}
-        onOpenChange={setPdfDialogOpen}
+        onOpenChange={(open) => {
+          setPdfDialogOpen(open);
+          // Reset PDF state when dialog closes to prevent stale state
+          if (!open) {
+            // Small delay to ensure dialog is fully closed before resetting
+            setTimeout(() => {
+              setPdfUrl(null);
+              setPdfPage(1);
+              setPdfDocumentName('Document');
+            }, 100);
+          }
+        }}
         pdfUrl={pdfUrl}
         initialPage={pdfPage}
         documentName={pdfDocumentName}
