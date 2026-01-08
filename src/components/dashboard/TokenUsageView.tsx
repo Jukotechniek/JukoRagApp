@@ -44,69 +44,47 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
     documentProcessingCost: 0,
   });
 
-  const effectiveOrgId = selectedOrganizationId || user?.organization_id;
+  const effectiveOrgId = selectedOrganizationId ?? user?.organization_id ?? null;
 
   useEffect(() => {
     if (!user) return;
-    if (!effectiveOrgId) {
+    if (user.role !== "admin") {
       setLoading(false);
       setTokenUsage([]);
-      setStats({
-        totalTokens: 0,
-        totalCost: 0,
-        chatTokens: 0,
-        documentProcessingTokens: 0,
-        chatCost: 0,
-        documentProcessingCost: 0,
-      });
       return;
     }
     loadTokenUsage();
   }, [user, timeRange, effectiveOrgId]);
 
   const loadTokenUsage = async () => {
-    if (!user || !effectiveOrgId) return;
+    if (!user) return;
+    if (user.role !== "admin") return;
 
     try {
       setLoading(true);
-      const now = new Date();
-      let startDate: Date;
+      // Admin-only: fetch via server route (service role), so managers cannot access via client queries.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Not authenticated");
 
-      switch (timeRange) {
-        case "day":
-          startDate = subDays(now, 1);
-          break;
-        case "week":
-          startDate = subWeeks(now, 1);
-          break;
-        case "month":
-          startDate = subMonths(now, 1);
-          break;
-        default:
-          startDate = new Date(0); // All time
+      const response = await fetch("/api/admin/token-usage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          timeRange,
+          organizationId: effectiveOrgId, // can be null => all orgs
+        }),
+      });
+
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        throw new Error(json.error || "Failed to load token usage");
       }
 
-      // Build query
-      let query = supabase
-        .from("token_usage")
-        .select("*")
-        .eq("organization_id", effectiveOrgId)
-        .order("created_at", { ascending: false });
-
-      if (timeRange !== "all") {
-        query = query.gte("created_at", startDate.toISOString());
-      }
-
-      // Admins can view all, others only their organization
-      if (user.role !== "admin") {
-        query = query.eq("organization_id", effectiveOrgId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      const usage: TokenUsage[] = (data || []) as TokenUsage[];
+      const usage: TokenUsage[] = (json.tokenUsage || []) as TokenUsage[];
 
       setTokenUsage(usage);
 
@@ -133,6 +111,7 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
   };
 
   const formatCurrency = (amount: number) => {
+    // Despite column name `cost_usd`, our DB function returns EUR.
     return new Intl.NumberFormat("nl-NL", {
       style: "currency",
       currency: "EUR",
@@ -154,10 +133,10 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
       );
     }
 
-    if (!effectiveOrgId) {
+    if (!user || user.role !== "admin") {
       return (
         <div className="glass rounded-xl p-6">
-          <p className="text-muted-foreground">Selecteer een organisatie om token usage te bekijken.</p>
+          <p className="text-muted-foreground">Geen toegang.</p>
         </div>
       );
     }
@@ -181,7 +160,7 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Totaal Kosten</CardTitle>
+                <CardTitle className="text-sm font-medium">Totaal Kosten (EUR)</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -317,7 +296,7 @@ const TokenUsageView = ({ selectedOrganizationId }: TokenUsageViewProps) => {
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground">Token Gebruik</h1>
         <p className="text-muted-foreground mt-2">
-          Overzicht van OpenAI API token gebruik en kosten
+          Overzicht van OpenAI API token gebruik en kosten (EUR)
         </p>
       </div>
 

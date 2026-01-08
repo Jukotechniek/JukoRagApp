@@ -24,8 +24,150 @@ from langfuse.types import TraceContext
 
 from config import (
     supabase, embeddings, llm, prompt, langfuse_client,
-    set_current_trace, get_current_trace, get_current_trace_context, get_current_organization_id
+    set_current_trace, get_current_trace, get_current_trace_context, get_current_organization_id, get_current_user_id
 )
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        v = int(value)
+        return v if v >= 0 else default
+    except Exception:
+        return default
+
+def _estimate_tokens_from_text(text: str) -> int:
+    # Rough heuristic: ~1 token per 4 chars (conservative)
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+def _extract_usage_from_llm_result(response: LLMResult) -> dict:
+    """
+    Try to extract token usage from different possible LangChain/OpenAI shapes.
+    Returns dict with prompt_tokens, completion_tokens, total_tokens (ints).
+    """
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    try:
+        # 1) Standard llm_output.token_usage
+        if hasattr(response, "llm_output") and response.llm_output:
+            tu = response.llm_output.get("token_usage")
+            if isinstance(tu, dict):
+                usage["prompt_tokens"] = _safe_int(tu.get("prompt_tokens", 0))
+                usage["completion_tokens"] = _safe_int(tu.get("completion_tokens", 0))
+                usage["total_tokens"] = _safe_int(tu.get("total_tokens", 0))
+                return usage
+
+        # 2) Newer LangChain: generation_info / message usage metadata
+        if response.generations and response.generations[0] and response.generations[0][0]:
+            gen = response.generations[0][0]
+            gen_info = getattr(gen, "generation_info", None) or {}
+            if isinstance(gen_info, dict):
+                tu = gen_info.get("token_usage") or gen_info.get("usage")
+                if isinstance(tu, dict):
+                    usage["prompt_tokens"] = _safe_int(tu.get("prompt_tokens", 0))
+                    usage["completion_tokens"] = _safe_int(tu.get("completion_tokens", 0))
+                    usage["total_tokens"] = _safe_int(tu.get("total_tokens", 0))
+                    return usage
+
+            msg = getattr(gen, "message", None)
+            usage_meta = getattr(msg, "usage_metadata", None)
+            if isinstance(usage_meta, dict):
+                usage["prompt_tokens"] = _safe_int(usage_meta.get("input_tokens", 0))
+                usage["completion_tokens"] = _safe_int(usage_meta.get("output_tokens", 0))
+                usage["total_tokens"] = _safe_int(usage_meta.get("total_tokens", 0))
+                return usage
+    except Exception:
+        pass
+
+    return usage
+
+def _log_token_usage_chat(
+    organization_id: str,
+    user_id: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    metadata: Optional[dict] = None,
+):
+    """Insert a token_usage row for chat and compute cost via DB function."""
+    try:
+        # Fallback totals
+        prompt_tokens_i = _safe_int(prompt_tokens)
+        completion_tokens_i = _safe_int(completion_tokens)
+        total_tokens_i = prompt_tokens_i + completion_tokens_i
+
+        cost_result = supabase.rpc(
+            "calculate_token_cost",
+            {
+                "p_model": model,
+                "p_prompt_tokens": prompt_tokens_i,
+                "p_completion_tokens": completion_tokens_i,
+            },
+        ).execute()
+        cost_usd = 0.0
+        if getattr(cost_result, "data", None) is not None:
+            try:
+                cost_usd = float(cost_result.data)
+            except Exception:
+                cost_usd = 0.0
+
+        supabase.table("token_usage").insert(
+            {
+                "organization_id": organization_id,
+                "user_id": user_id,
+                "model": model,
+                "operation_type": "chat",
+                "prompt_tokens": prompt_tokens_i,
+                "completion_tokens": completion_tokens_i,
+                "total_tokens": total_tokens_i,
+                "cost_usd": cost_usd,
+                "metadata": metadata or {},
+            }
+        ).execute()
+    except Exception as e:
+        # Don't fail chat if logging fails
+        print(f"Warning: Failed to log token usage (chat): {e}")
+
+def _log_token_usage_embedding(
+    organization_id: str,
+    user_id: Optional[str],
+    model: str,
+    prompt_tokens: int,
+    metadata: Optional[dict] = None,
+):
+    """Insert a token_usage row for embedding and compute cost via DB function."""
+    try:
+        pt = _safe_int(prompt_tokens)
+        cost_result = supabase.rpc(
+            "calculate_token_cost",
+            {
+                "p_model": model,
+                "p_prompt_tokens": pt,
+                "p_completion_tokens": 0,
+            },
+        ).execute()
+        cost_eur = 0.0
+        if getattr(cost_result, "data", None) is not None:
+            try:
+                cost_eur = float(cost_result.data)
+            except Exception:
+                cost_eur = 0.0
+
+        payload = {
+            "organization_id": organization_id,
+            "model": model,
+            "operation_type": "embedding",
+            "prompt_tokens": pt,
+            "completion_tokens": 0,
+            "total_tokens": pt,
+            "cost_usd": cost_eur,  # NOTE: DB function returns EUR; column name is legacy
+            "metadata": metadata or {},
+        }
+        # user_id is nullable; only include it if we have a real UUID
+        if user_id and isinstance(user_id, str) and len(user_id) >= 32:
+            payload["user_id"] = user_id
+        supabase.table("token_usage").insert(payload).execute()
+    except Exception as e:
+        print(f"Warning: Failed to log token usage (embedding): {e}")
 
 
 class ChatRequest(BaseModel):
@@ -145,6 +287,21 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
                 metadata={"duration_ms": embedding_duration}
             )
             embedding_gen.end()
+
+        # Log embedding usage to token_usage (best-effort)
+        try:
+            user_id = get_current_user_id()
+            _log_token_usage_embedding(
+                organization_id=organization_id,
+                user_id=str(user_id) if user_id else None,
+                model="text-embedding-3-small",
+                prompt_tokens=max(0, len(query) // 4),
+                metadata={
+                    "kind": "query_embedding",
+                },
+            )
+        except Exception as e:
+            print(f"Warning: Failed to log embedding token usage: {e}")
         
         if semantic_span:
             semantic_info = []
@@ -425,7 +582,8 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
         if self.trace and langfuse_client and self.trace_context:
             self.start_time = time.time()
             # Extract model name - can be in different places
-            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or "gpt-4o"
+            default_model = getattr(llm, "model_name", None) or getattr(llm, "model", None) or "gpt-4.1"
+            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or default_model
             self.model_name = model_name
             
             self.current_generation = langfuse_client.start_observation(
@@ -450,19 +608,18 @@ class LangfuseCallbackHandler(BaseCallbackHandler):
             usage = None
             token_usage_metadata = {}
             
-            if hasattr(response, 'llm_output') and response.llm_output:
-                usage = response.llm_output.get('token_usage')
-                # Also store in metadata for easier viewing
-                if usage:
-                    token_usage_metadata = {
-                        "prompt_tokens": usage.get("prompt_tokens", 0),
-                        "completion_tokens": usage.get("completion_tokens", 0),
-                        "total_tokens": usage.get("total_tokens", 0),
-                    }
-                    # Accumulate token usage for agent total
-                    self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
-                    self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
-                    self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
+            extracted = _extract_usage_from_llm_result(response)
+            if extracted.get("total_tokens", 0) > 0:
+                usage = extracted
+                token_usage_metadata = {
+                    "prompt_tokens": extracted.get("prompt_tokens", 0),
+                    "completion_tokens": extracted.get("completion_tokens", 0),
+                    "total_tokens": extracted.get("total_tokens", 0),
+                }
+                # Accumulate token usage for agent total
+                self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
+                self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
+                self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
             
             self.current_generation.update(
                 output=output_text,
@@ -577,7 +734,8 @@ class StreamingCallbackHandler(BaseCallbackHandler):
     def on_llm_start(self, serialized, prompts, **kwargs):
         if self.trace and langfuse_client and self.trace_context:
             self.start_time = time.time()
-            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or "gpt-4o"
+            default_model = getattr(llm, "model_name", None) or getattr(llm, "model", None) or "gpt-4.1"
+            model_name = serialized.get("name") or serialized.get("model_name") or kwargs.get("model_name") or default_model
             self.model_name = model_name
             
             self.current_generation = langfuse_client.start_observation(
@@ -607,17 +765,17 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             usage = None
             token_usage_metadata = {}
             
-            if hasattr(response, 'llm_output') and response.llm_output:
-                usage = response.llm_output.get('token_usage')
-                if usage:
-                    token_usage_metadata = {
-                        "prompt_tokens": usage.get("prompt_tokens", 0),
-                        "completion_tokens": usage.get("completion_tokens", 0),
-                        "total_tokens": usage.get("total_tokens", 0),
-                    }
-                    self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
-                    self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
-                    self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
+            extracted = _extract_usage_from_llm_result(response)
+            if extracted.get("total_tokens", 0) > 0:
+                usage = extracted
+                token_usage_metadata = {
+                    "prompt_tokens": extracted.get("prompt_tokens", 0),
+                    "completion_tokens": extracted.get("completion_tokens", 0),
+                    "total_tokens": extracted.get("total_tokens", 0),
+                }
+                self.total_token_usage["prompt_tokens"] += token_usage_metadata["prompt_tokens"]
+                self.total_token_usage["completion_tokens"] += token_usage_metadata["completion_tokens"]
+                self.total_token_usage["total_tokens"] += token_usage_metadata["total_tokens"]
             
             self.current_generation.update(
                 output=output_text,
@@ -725,9 +883,9 @@ async def chat_endpoint_stream(
         
         # Set trace and organization_id for retrieve tool
         if trace:
-            set_current_trace(trace, trace_context, request.organizationId)
+            set_current_trace(trace, trace_context, request.organizationId, verified_user_id)
         else:
-            set_current_trace(None, None, request.organizationId)
+            set_current_trace(None, None, request.organizationId, verified_user_id)
         
         # Create callback handler for LLM tracking (with Langfuse)
         callbacks = []
@@ -755,6 +913,30 @@ async def chat_endpoint_stream(
         token_usage = None
         if callback_handler:
             token_usage = callback_handler.total_token_usage
+
+        # Log token usage (chat) to database (best-effort)
+        try:
+            model_name = (callback_handler.model_name if callback_handler else None) or "gpt-4.1"
+            pt = _safe_int(token_usage.get("prompt_tokens", 0) if token_usage else 0)
+            ct = _safe_int(token_usage.get("completion_tokens", 0) if token_usage else 0)
+            if pt + ct <= 0:
+                # Fallback: estimate from question + output length
+                pt = _estimate_tokens_from_text(request.question)
+                ct = _estimate_tokens_from_text(ai_message)
+            _log_token_usage_chat(
+                organization_id=request.organizationId,
+                user_id=verified_user_id,
+                model=model_name,
+                prompt_tokens=pt,
+                completion_tokens=ct,
+                metadata={
+                    "request_id": request_id,
+                    "conversation_id": request.conversationId,
+                    "stream": True,
+                },
+            )
+        except Exception as e:
+            print(f"Warning: Failed to log token usage (stream): {e}")
         
         # Track agent execution completion
         if agent_span:
@@ -832,7 +1014,7 @@ async def chat_endpoint_stream(
                 langfuse_client.flush()
         
         # Reset trace and organization_id for next request
-        set_current_trace(None, None, None)
+        set_current_trace(None, None, None, None)
         
         # Send final response marker
         yield f"data: {json.dumps({'type': 'done', 'requestId': request_id})}\n\n"
@@ -957,10 +1139,10 @@ async def chat_endpoint(
         
         # Set trace and organization_id for retrieve tool
         if trace:
-            set_current_trace(trace, trace_context, request.organizationId)
+            set_current_trace(trace, trace_context, request.organizationId, verified_user_id)
         else:
             # Even without trace, we need to set organization_id
-            set_current_trace(None, None, request.organizationId)
+            set_current_trace(None, None, request.organizationId, verified_user_id)
         
         # Create callback handler for LLM tracking
         callbacks = []
@@ -982,6 +1164,29 @@ async def chat_endpoint(
         token_usage = None
         if callback_handler:
             token_usage = callback_handler.total_token_usage
+
+        # Log token usage (chat) to database (best-effort)
+        try:
+            model_name = (callback_handler.model_name if callback_handler else None) or "gpt-4.1"
+            pt = _safe_int(token_usage.get("prompt_tokens", 0) if token_usage else 0)
+            ct = _safe_int(token_usage.get("completion_tokens", 0) if token_usage else 0)
+            if pt + ct <= 0:
+                pt = _estimate_tokens_from_text(request.question)
+                ct = _estimate_tokens_from_text(ai_message)
+            _log_token_usage_chat(
+                organization_id=request.organizationId,
+                user_id=verified_user_id,
+                model=model_name,
+                prompt_tokens=pt,
+                completion_tokens=ct,
+                metadata={
+                    "request_id": request_id,
+                    "conversation_id": request.conversationId,
+                    "stream": False,
+                },
+            )
+        except Exception as e:
+            print(f"Warning: Failed to log token usage: {e}")
         
         # Track agent execution
         if agent_span:
@@ -1056,7 +1261,7 @@ async def chat_endpoint(
                 langfuse_client.flush()
         
         # Reset trace and organization_id for next request
-        set_current_trace(None, None, None)
+        set_current_trace(None, None, None, None)
         
         return ChatResponse(
             success=True,
@@ -1099,6 +1304,6 @@ async def chat_endpoint(
                 langfuse_client.flush()
         
         # Reset trace and organization_id for next request
-        set_current_trace(None, None, None)
+        set_current_trace(None, None, None, None)
         
         raise HTTPException(status_code=500, detail=error_msg)

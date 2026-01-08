@@ -238,12 +238,14 @@ prompt = ChatPromptTemplate.from_messages([
 _current_trace: ContextVar = ContextVar('_current_trace', default=None)
 _current_trace_context: ContextVar = ContextVar('_current_trace_context', default=None)
 _current_organization_id: ContextVar = ContextVar('_current_organization_id', default=None)
+_current_user_id: ContextVar = ContextVar('_current_user_id', default=None)
 
-def set_current_trace(trace, trace_context=None, organization_id=None):
-    """Set current trace and organization_id for retrieve tool using ContextVars (thread-safe)"""
+def set_current_trace(trace, trace_context=None, organization_id=None, user_id=None):
+    """Set current trace, organization_id and user_id for retrieve tool using ContextVars (thread-safe)"""
     _current_trace.set(trace)
     _current_trace_context.set(trace_context)
     _current_organization_id.set(organization_id)
+    _current_user_id.set(user_id)
 
 def get_current_trace():
     """Get current trace from context (thread-safe)"""
@@ -256,6 +258,10 @@ def get_current_trace_context():
 def get_current_organization_id():
     """Get current organization_id from context (thread-safe)"""
     return _current_organization_id.get()
+
+def get_current_user_id():
+    """Get current user_id from context (thread-safe)"""
+    return _current_user_id.get()
 
 
 # ===== Authentication Helper =====

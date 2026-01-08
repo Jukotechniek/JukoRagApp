@@ -12,6 +12,59 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import supabase, embeddings, verify_auth_token
 from utils.extraction import extract_documents_from_file
 
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        v = int(value)
+        return v if v >= 0 else default
+    except Exception:
+        return default
+
+def _estimate_tokens_from_text(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+def _log_token_usage_doc_processing(
+    organization_id: str,
+    user_id: str,
+    model: str,
+    prompt_tokens: int,
+    metadata: Optional[dict] = None,
+):
+    """Insert a token_usage row for document_processing and compute cost via DB function."""
+    try:
+        pt = _safe_int(prompt_tokens)
+        cost_result = supabase.rpc(
+            "calculate_token_cost",
+            {
+                "p_model": model,
+                "p_prompt_tokens": pt,
+                "p_completion_tokens": 0,
+            },
+        ).execute()
+        cost_usd = 0.0
+        if getattr(cost_result, "data", None) is not None:
+            try:
+                cost_usd = float(cost_result.data)
+            except Exception:
+                cost_usd = 0.0
+
+        supabase.table("token_usage").insert(
+            {
+                "organization_id": organization_id,
+                "user_id": user_id,
+                "model": model,
+                "operation_type": "document_processing",
+                "prompt_tokens": pt,
+                "completion_tokens": 0,
+                "total_tokens": pt,
+                "cost_usd": cost_usd,
+                "metadata": metadata or {},
+            }
+        ).execute()
+    except Exception as e:
+        print(f"Warning: Failed to log token usage (document_processing): {e}")
+
 
 class ProcessDocumentRequest(BaseModel):
     documentId: str
@@ -337,6 +390,26 @@ async def process_document_endpoint(
             duration = time.time() - start_time
             
             print(f"Successfully processed document {file_name}: {len(chunks)} chunks in {duration:.2f}s")
+
+            # Log token usage for embeddings (best-effort; embeddings API doesn't expose exact usage here)
+            try:
+                # Estimate tokens across all embedded text
+                estimated_tokens = 0
+                for t in texts:
+                    estimated_tokens += _estimate_tokens_from_text(t)
+                _log_token_usage_doc_processing(
+                    organization_id=request.organizationId,
+                    user_id=verified_user_id,
+                    model="text-embedding-3-small",
+                    prompt_tokens=estimated_tokens,
+                    metadata={
+                        "document_id": request.documentId,
+                        "chunks_processed": len(chunks),
+                        "file_name": file_name,
+                    },
+                )
+            except Exception as e:
+                print(f"Warning: Failed to log token usage (doc processing): {e}")
             
             return ProcessDocumentResponse(
                 success=True,
