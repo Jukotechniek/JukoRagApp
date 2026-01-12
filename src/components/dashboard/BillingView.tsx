@@ -207,30 +207,31 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     const planData = {
       starter: {
         name: "Starter",
-        price: "--",
-        period: "per maand",
-        features: ["Tot 100 documenten", "Tot 5 gebruikers", "Basis support", "Basis analytics"],
+        price: "€19",
+        period: "per gebruiker/maand",
+        features: ["10 documenten per gebruiker", "100 vragen/maand per gebruiker", "Basis support", "Basis analytics"],
       },
       professional: {
         name: "Professional",
-        price: "--",
-        period: "per maand",
+        price: "€49",
+        period: "per gebruiker/maand",
         features: [
-          "Onbeperkte documenten",
-          "Onbeperkte gebruikers",
+          "50 documenten per gebruiker",
+          "Onbeperkt vragen",
           "Prioriteit support",
           "Geavanceerde analytics",
         ],
       },
       enterprise: {
         name: "Enterprise",
-        price: "--",
+        price: "Prijs op aanvraag",
         period: "",
         features: [
           "Onbeperkte documenten en gebruikers",
           "Lokaal draaiend AI-model (on-premise of private cloud)",
-          "Volledig maatwerk ingericht op uw processen",
-          "Dedicated support & SLA",
+          "Dedicated support",
+          "Custom integraties",
+          "Training & onboarding",
         ],
       },
     };
@@ -260,13 +261,14 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     {
       id: "enterprise",
       name: "Enterprise",
-      price: "--",
+      price: "Prijs op aanvraag",
       period: "",
       features: [
         "Onbeperkte documenten en gebruikers",
         "Lokaal draaiend AI-model (on-premise of private cloud)",
-        "Volledig maatwerk ingericht op uw processen",
-        "Dedicated support & SLA",
+        "Dedicated support",
+        "Custom integraties",
+        "Training & onboarding",
       ],
     },
   ];
@@ -660,9 +662,9 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="starter">Starter - --/maand</SelectItem>
-                  <SelectItem value="professional">Professional - --/maand</SelectItem>
-                  <SelectItem value="enterprise">Enterprise - --</SelectItem>
+                  <SelectItem value="starter">Starter - €19/gebruiker/maand</SelectItem>
+                  <SelectItem value="professional">Professional - €49/gebruiker/maand</SelectItem>
+                  <SelectItem value="enterprise">Enterprise - Prijs op aanvraag</SelectItem>
                 </SelectContent>
               </Select>
             </div>

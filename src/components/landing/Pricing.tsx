@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 const plans = [
   {
     name: "Starter",
-    price: "--",
+    price: "€19",
     period: "/gebruiker/maand",
     description: "Perfect voor kleine teams en individuele gebruikers",
     features: [
       "Per gebruiker",
-      "100 documenten per gebruiker",
-      "500 vragen/maand per gebruiker",
+      "10 documenten per gebruiker",
+      "100 vragen/maand per gebruiker",
       "Email support",
       "Basis analytics",
     ],
@@ -18,12 +18,12 @@ const plans = [
   },
   {
     name: "Professional",
-    price: "--",
+    price: "€49",
     period: "/gebruiker/maand",
-    description: "Voor groeiende bedrijven",
+    description: "Voor groeiende bedrijven die meer nodig hebben",
     features: [
       "Per gebruiker",
-      "Onbeperkt documenten",
+      "50 documenten per gebruiker",
       "Onbeperkt vragen",
       "Prioriteit support",
       "Geavanceerde analytics",
@@ -32,7 +32,7 @@ const plans = [
   },
   {
     name: "Enterprise",
-    price: "--",
+    price: "Prijs op aanvraag",
     period: "",
     description: "Voor grote organisaties met maatwerk",
     features: [
@@ -40,9 +40,7 @@ const plans = [
       "Onbeperkt documenten",
       "Onbeperkt vragen",
       "Dedicated support",
-      "SLA garantie",
       "Lokaal draaiend AI-model mogelijk (on-premise of private cloud)",
-      "Volledig maatwerk ingericht op uw processen",
       "Custom integraties",
       "Training & onboarding",
     ],
@@ -66,11 +64,11 @@ export const Pricing = () => {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto items-start">
           {plans.map((plan, index) => (
             <div
               key={plan.name}
-              className={`relative bg-white dark:bg-card/60 backdrop-blur-xl rounded-2xl p-8 animate-slide-up border shadow-md ${
+              className={`relative bg-white dark:bg-card/60 backdrop-blur-xl rounded-2xl p-8 animate-slide-up border shadow-md flex flex-col ${
                 plan.popular 
                   ? "border-primary/60 dark:border-primary/50 shadow-xl shadow-primary/30 dark:shadow-primary/10" 
                   : "border-border/60 dark:border-border/50"
@@ -85,34 +83,36 @@ export const Pricing = () => {
                 </div>
               )}
 
-              <div className="mb-6">
-                <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-                  {plan.name}
-                </h3>
-                <p className="text-muted-foreground text-sm">{plan.description}</p>
-              </div>
+              <div className="flex-grow flex flex-col">
+                <div className="mb-6">
+                  <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+                    {plan.name}
+                  </h3>
+                  <p className="text-muted-foreground text-sm">{plan.description}</p>
+                </div>
 
-              <div className="mb-6">
-                <span className="font-display text-4xl font-bold text-foreground">
-                  {plan.price}
-                </span>
-                <span className="text-muted-foreground">{plan.period}</span>
-              </div>
+                <div className="mb-6">
+                  <span className={`font-display font-bold text-foreground ${plan.name === "Enterprise" ? "text-2xl" : "text-4xl"}`}>
+                    {plan.price}
+                  </span>
+                  <span className="text-muted-foreground">{plan.period}</span>
+                </div>
 
-              <ul className="space-y-3 mb-8">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <Check className="w-3 h-3 text-primary" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">{feature}</span>
-                  </li>
-                ))}
-              </ul>
+                <ul className="space-y-3 flex-grow">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-3">
+                      <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Check className="w-3 h-3 text-primary" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
               <a 
                 href="mailto:info@jukotechniek.nl?subject=Abonnement Aanvraag&body=Ik ben geïnteresseerd in het ${plan.name} plan."
-                className="block"
+                className="block mt-8"
               >
                 <Button
                   variant={plan.popular ? "hero" : "outline"}

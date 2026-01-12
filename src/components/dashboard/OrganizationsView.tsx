@@ -251,8 +251,8 @@ const OrganizationsView = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="starter">Starter - --/maand</SelectItem>
-                  <SelectItem value="professional">Professional - --/maand</SelectItem>
+                  <SelectItem value="starter">Starter - €19/gebruiker/maand</SelectItem>
+                  <SelectItem value="professional">Professional - €49/gebruiker/maand</SelectItem>
                 </SelectContent>
               </Select>
             </div>
