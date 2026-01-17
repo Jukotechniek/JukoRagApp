@@ -22,7 +22,7 @@ export function PDFViewerContent({ pdfUrl, initialPage }: PDFViewerContentProps)
   });
 
   return (
-    <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+    <Worker workerUrl="https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.js">
       <div 
         style={{ height: '100%', width: '100%', position: 'relative' }}
         onClick={(e) => {
