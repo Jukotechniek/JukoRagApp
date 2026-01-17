@@ -13,6 +13,36 @@ from contextvars import ContextVar
 # Load environment variables
 load_dotenv()
 
+# ===== Sentry Configuration =====
+sentry_dsn = os.environ.get("SENTRY_DSN")
+sentry_environment = os.environ.get("SENTRY_ENVIRONMENT", "development")
+sentry_traces_sample_rate = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
+sentry_profiles_sample_rate = float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "1.0"))
+
+if sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            environment=sentry_environment,
+            traces_sample_rate=sentry_traces_sample_rate,
+            profiles_sample_rate=sentry_profiles_sample_rate,
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                SqlalchemyIntegration(),
+            ],
+            # Capture unhandled exceptions
+            enable_tracing=True,
+        )
+        print(f"Sentry initialized successfully (environment: {sentry_environment})")
+    except Exception as e:
+        print(f"Failed to initialize Sentry: {e}")
+else:
+    print("SENTRY_DSN not configured, Sentry tracking disabled")
+
 # ===== Langfuse Configuration =====
 langfuse_secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
 langfuse_public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")

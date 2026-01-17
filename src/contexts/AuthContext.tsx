@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import * as Sentry from '@sentry/nextjs';
 
 export type UserRole = "admin" | "manager" | "technician";
 
@@ -305,6 +306,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
     } catch (error) {
+      // Capture error in Sentry
+      Sentry.captureException(error as Error, {
+        tags: {
+          operation: 'load_user_data',
+          source: 'auth_context',
+        },
+        contexts: {
+          error: {
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          },
+        },
+        level: 'error',
+      });
+      
       // Use auth data as fallback
       const { data: authUser } = await supabase.auth.getUser();
       if (authUser?.user) {

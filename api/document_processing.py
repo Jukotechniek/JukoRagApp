@@ -12,6 +12,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import supabase, embeddings, verify_auth_token
 from utils.extraction import extract_documents_from_file
 
+# Import Sentry for error tracking
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None
+
 def _safe_int(value, default: int = 0) -> int:
     try:
         v = int(value)
@@ -431,6 +437,18 @@ async def process_document_endpoint(
     except Exception as e:
         error_msg = str(e)
         print(f"Error processing document: {error_msg}")
+        
+        # Capture error in Sentry with context
+        if sentry_sdk:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("endpoint", "process_document")
+                scope.set_tag("organization_id", request.organizationId)
+                scope.set_context("request", {
+                    "document_id": request.documentId,
+                    "organization_id": request.organizationId,
+                })
+                sentry_sdk.capture_exception(e)
+        
         raise HTTPException(
             status_code=500,
             detail=f"Failed to process document: {error_msg}"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import * as Sentry from '@sentry/nextjs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -116,6 +117,26 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Error fetching documents:", error);
+      
+      // Capture error in Sentry
+      Sentry.captureException(new Error(`Failed to fetch documents: ${error.message}`), {
+        tags: {
+          endpoint: '/api/get-documents',
+          operation: 'fetch_documents',
+        },
+        contexts: {
+          error: {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+          },
+          query: {
+            organizationId,
+          },
+        },
+        level: 'error',
+      });
+      
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
@@ -125,6 +146,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ documents: data || [] });
   } catch (error: any) {
     console.error("Error in get-documents API:", error);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/get-documents',
+        operation: 'get_documents',
+      },
+      contexts: {
+        error: {
+          message: error.message,
+          stack: error.stack,
+        },
+      },
+      level: 'error',
+    });
+    
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }

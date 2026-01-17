@@ -5,6 +5,9 @@ from fastapi import FastAPI, Request, Header
 from fastapi.responses import Response, FileResponse
 import uvicorn
 
+# Import config early to initialize Sentry before FastAPI app is created
+import config
+
 from chat import chat_endpoint, chat_endpoint_stream, ChatRequest, ChatResponse
 from document_processing import process_document_endpoint, ProcessDocumentRequest, ProcessDocumentResponse
 

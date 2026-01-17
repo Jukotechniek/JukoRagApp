@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import * as Sentry from '@sentry/nextjs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,6 +110,30 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Error inserting document:", error);
+      
+      // Capture error in Sentry
+      Sentry.captureException(new Error(`Failed to insert document: ${error.message}`), {
+        tags: {
+          endpoint: '/api/upload-document',
+          operation: 'document_insert',
+        },
+        contexts: {
+          error: {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          },
+          document: {
+            name,
+            file_type,
+            file_size,
+            organization_id,
+          },
+        },
+        level: 'error',
+      });
+      
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
@@ -125,6 +150,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ document: data });
   } catch (error: any) {
     console.error("Error in upload-document API:", error);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/upload-document',
+        operation: 'upload_document',
+      },
+      contexts: {
+        error: {
+          message: error.message,
+          stack: error.stack,
+        },
+      },
+      level: 'error',
+    });
+    
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }

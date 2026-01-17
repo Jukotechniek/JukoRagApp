@@ -27,6 +27,12 @@ from config import (
     set_current_trace, get_current_trace, get_current_trace_context, get_current_organization_id, get_current_user_id
 )
 
+# Import Sentry for error tracking
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None
+
 def _safe_int(value, default: int = 0) -> int:
     try:
         v = int(value)
@@ -1024,6 +1030,19 @@ async def chat_endpoint_stream(
         error_msg = str(e)
         print(f"Error in chat endpoint: {e}")
         
+        # Capture error in Sentry with context
+        if sentry_sdk:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("endpoint", "chat_stream")
+                scope.set_tag("organization_id", request.organizationId)
+                scope.set_context("request", {
+                    "request_id": request_id,
+                    "user_id": request.userId,
+                    "conversation_id": request.conversationId,
+                    "question_length": len(request.question),
+                })
+                sentry_sdk.capture_exception(e)
+        
         # Log response time to analytics even on error
         try:
             supabase.table("analytics").insert({
@@ -1273,6 +1292,19 @@ async def chat_endpoint(
         total_duration = (time.time() - start_time) * 1000
         error_msg = str(e)
         print(f"Error in chat endpoint: {e}")
+        
+        # Capture error in Sentry with context
+        if sentry_sdk:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("endpoint", "chat")
+                scope.set_tag("organization_id", request.organizationId)
+                scope.set_context("request", {
+                    "request_id": request_id,
+                    "user_id": request.userId,
+                    "conversation_id": request.conversationId,
+                    "question_length": len(request.question),
+                })
+                sentry_sdk.capture_exception(e)
         
         # Log response time to analytics even on error
         try:

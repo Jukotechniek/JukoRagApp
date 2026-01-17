@@ -18,4 +18,5 @@ pandas
 openpyxl
 pymupdf
 mistralai
+sentry-sdk[fastapi]
 

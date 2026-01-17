@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 
 export async function POST(req: NextRequest) {
   try {
@@ -141,6 +142,26 @@ export async function POST(req: NextRequest) {
 
     if (unlinkError) {
       console.error('Error removing user from organization:', unlinkError);
+      
+      // Capture error in Sentry
+      Sentry.captureException(new Error(`Failed to remove user from organization: ${unlinkError.message}`), {
+        tags: {
+          endpoint: '/api/delete-user',
+          operation: 'unlink_user_organization',
+        },
+        contexts: {
+          error: {
+            message: unlinkError.message,
+            code: unlinkError.code,
+          },
+          user: {
+            userId,
+            organizationId,
+          },
+        },
+        level: 'error',
+      });
+      
       return NextResponse.json(
         { success: false, error: unlinkError.message || 'Failed to remove user from organization' },
         { status: 500 }
@@ -156,6 +177,24 @@ export async function POST(req: NextRequest) {
 
       if (userDeleteError) {
         console.error('Error deleting user record:', userDeleteError);
+        
+        // Capture error in Sentry (warning level since we continue)
+        Sentry.captureException(new Error(`Failed to delete user record: ${userDeleteError.message}`), {
+          tags: {
+            endpoint: '/api/delete-user',
+            operation: 'delete_user_record',
+          },
+          contexts: {
+            error: {
+              message: userDeleteError.message,
+              code: userDeleteError.code,
+            },
+            user: {
+              userId,
+            },
+          },
+          level: 'warning',
+        });
         // Continue even if this fails, as the user is already unlinked from organization
       }
 
@@ -164,6 +203,23 @@ export async function POST(req: NextRequest) {
 
       if (authDeleteError) {
         console.error('Error deleting auth user:', authDeleteError);
+        
+        // Capture error in Sentry (warning level since we continue)
+        Sentry.captureException(new Error(`Failed to delete auth user: ${authDeleteError.message}`), {
+          tags: {
+            endpoint: '/api/delete-user',
+            operation: 'delete_auth_user',
+          },
+          contexts: {
+            error: {
+              message: authDeleteError.message,
+            },
+            user: {
+              userId,
+            },
+          },
+          level: 'warning',
+        });
         // Continue even if this fails, as the user is already unlinked from organization
       }
     }
@@ -175,6 +231,22 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error in delete-user API:', error);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/delete-user',
+        operation: 'delete_user',
+      },
+      contexts: {
+        error: {
+          message: error.message,
+          stack: error.stack,
+        },
+      },
+      level: 'error',
+    });
+    
     return NextResponse.json(
       {
         success: false,

@@ -3,6 +3,16 @@
 
 import { supabase } from '@/lib/supabase';
 
+// Import Sentry for client-side error tracking
+let Sentry: any = null;
+if (typeof window !== 'undefined') {
+  try {
+    Sentry = require('@sentry/nextjs');
+  } catch (e) {
+    // Sentry not available
+  }
+}
+
 /**
  * Process a document: split into chunks and generate embeddings
  * Uses Python API for document processing (better PDF/DOCX support)
@@ -71,7 +81,27 @@ export async function processDocumentForRAG(
       
       if (!data.success) {
         console.error(`Processing failed for ${documentId}:`, data.error || data.message);
-        throw new Error(data.error || data.message || 'Processing failed');
+        const error = new Error(data.error || data.message || 'Processing failed');
+        
+        // Capture error in Sentry (client-side)
+        if (Sentry && typeof window !== 'undefined') {
+          Sentry.captureException(error, {
+            tags: {
+              operation: 'process_document_for_rag',
+              source: 'client',
+            },
+            contexts: {
+              document: {
+                documentId,
+                organizationId,
+              },
+              response: data,
+            },
+            level: 'error',
+          });
+        }
+        
+        throw error;
       }
 
       console.log(`Python processing completed successfully for document: ${documentId}, chunks: ${data.chunksProcessed || 'unknown'}`);
@@ -99,7 +129,45 @@ export async function processDocumentForRAG(
       
       if (fetchError.name === 'AbortError') {
         console.error(`Request timeout for document processing: ${documentId}`);
-        throw new Error('Document processing timeout. Het bestand is mogelijk te groot. Probeer het later opnieuw of deel het bestand op in kleinere delen.');
+        const timeoutError = new Error('Document processing timeout. Het bestand is mogelijk te groot. Probeer het later opnieuw of deel het bestand op in kleinere delen.');
+        
+        // Capture timeout error in Sentry
+        if (Sentry && typeof window !== 'undefined') {
+          Sentry.captureException(timeoutError, {
+            tags: {
+              operation: 'process_document_for_rag',
+              error_type: 'timeout',
+              source: 'client',
+            },
+            contexts: {
+              document: {
+                documentId,
+                organizationId,
+              },
+            },
+            level: 'warning',
+          });
+        }
+        
+        throw timeoutError;
+      }
+      
+      // Capture other fetch errors
+      if (Sentry && typeof window !== 'undefined') {
+        Sentry.captureException(fetchError, {
+          tags: {
+            operation: 'process_document_for_rag',
+            error_type: 'fetch_error',
+            source: 'client',
+          },
+          contexts: {
+            document: {
+              documentId,
+              organizationId,
+            },
+          },
+          level: 'error',
+        });
       }
       
       throw fetchError;
@@ -107,6 +175,27 @@ export async function processDocumentForRAG(
 
   } catch (error: any) {
     console.error('Error processing document for RAG:', error);
+    
+    // Capture error in Sentry (client-side)
+    if (Sentry && typeof window !== 'undefined') {
+      Sentry.captureException(error, {
+        tags: {
+          operation: 'process_document_for_rag',
+          source: 'client',
+        },
+        contexts: {
+          document: {
+            documentId,
+            organizationId,
+          },
+          error: {
+            message: error.message,
+            stack: error.stack,
+          },
+        },
+        level: 'error',
+      });
+    }
     
     // Provide helpful error messages
     const errorMessage = error.message || error.toString();

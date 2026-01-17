@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 
 export async function POST(req: NextRequest) {
   try {
@@ -169,6 +170,28 @@ export async function POST(req: NextRequest) {
       });
 
       if (inviteError) {
+        // Capture invite error in Sentry (but don't fail if user already exists)
+        if (!inviteError.message?.includes('already registered') && 
+            !inviteError.message?.includes('already exists') && 
+            !inviteError.message?.includes('User already registered')) {
+          Sentry.captureException(new Error(`Failed to invite user: ${inviteError.message}`), {
+            tags: {
+              endpoint: '/api/create-user',
+              operation: 'invite_user',
+            },
+            contexts: {
+              error: {
+                message: inviteError.message,
+              },
+              user: {
+                email,
+                name,
+              },
+            },
+            level: 'error',
+          });
+        }
+        
         // If user already exists (duplicate email), try to find them
         if (inviteError.message?.includes('already registered') || inviteError.message?.includes('already exists') || inviteError.message?.includes('User already registered')) {
           // Retry listing users to find the existing user
@@ -229,6 +252,28 @@ export async function POST(req: NextRequest) {
 
       if (userError) {
         console.error('Error creating user record:', userError);
+        
+        // Capture error in Sentry
+        Sentry.captureException(new Error(`Failed to create user record: ${userError.message}`), {
+          tags: {
+            endpoint: '/api/create-user',
+            operation: 'create_user_record',
+          },
+          contexts: {
+            error: {
+              message: userError.message,
+              code: userError.code,
+            },
+            user: {
+              email,
+              name,
+              role: role || 'technician',
+              userId,
+            },
+          },
+          level: 'error',
+        });
+        
         return NextResponse.json(
           { success: false, error: userError.message || 'Failed to create user record' },
           { status: 500 }
@@ -269,6 +314,26 @@ export async function POST(req: NextRequest) {
 
       if (linkError) {
         console.error('Error linking user to organization:', linkError);
+        
+        // Capture error in Sentry
+        Sentry.captureException(new Error(`Failed to link user to organization: ${linkError.message}`), {
+          tags: {
+            endpoint: '/api/create-user',
+            operation: 'link_user_organization',
+          },
+          contexts: {
+            error: {
+              message: linkError.message,
+              code: linkError.code,
+            },
+            user: {
+              userId,
+              organizationId,
+            },
+          },
+          level: 'error',
+        });
+        
         return NextResponse.json(
           { success: false, error: linkError.message || 'Failed to link user to organization' },
           { status: 500 }
@@ -286,6 +351,22 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error in create-user API:', error);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/create-user',
+        operation: 'create_user',
+      },
+      contexts: {
+        error: {
+          message: error.message,
+          stack: error.stack,
+        },
+      },
+      level: 'error',
+    });
+    
     return NextResponse.json(
       {
         success: false,

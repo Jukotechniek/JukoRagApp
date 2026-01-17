@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
+import * as Sentry from '@sentry/nextjs';
 
 // Determine Python API URL based on environment
 // In Docker: use service name 'python-api'
@@ -52,6 +53,25 @@ export async function POST(req: NextRequest) {
     const data = await response.json();
 
     if (!response.ok) {
+      // Capture error in Sentry
+      const apiError = new Error(data.detail || data.error || 'Python API error');
+      Sentry.captureException(apiError, {
+        tags: {
+          endpoint: '/api/process-document',
+          api_type: 'python_proxy',
+        },
+        contexts: {
+          request: {
+            python_api_url: PYTHON_API_URL,
+            method: 'POST',
+            status_code: response.status,
+          },
+          response: data,
+          body: body,
+        },
+        level: 'error',
+      });
+      
       return NextResponse.json(
         { 
           success: false, 
@@ -65,6 +85,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error proxying to Python API:', error);
+    
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/process-document',
+        api_type: 'python_proxy',
+      },
+      contexts: {
+        request: {
+          python_api_url: PYTHON_API_URL,
+          method: 'POST',
+        },
+        error: {
+          message: error.message,
+          code: (error as any)?.code || 'UNKNOWN',
+        },
+      },
+      level: 'error',
+    });
+    
     return NextResponse.json(
       {
         success: false,
