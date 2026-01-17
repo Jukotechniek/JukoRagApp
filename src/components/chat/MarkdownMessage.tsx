@@ -128,14 +128,6 @@ function remarkCitations() {
           }
           
           // Now replace placeholders with actual HTML links
-          // HTML escape the filename to prevent issues with special characters
-          const escapedFilename = filename
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-          
           // Encode citation data in id attribute as base64 to avoid sanitizer issues
           // Format: citation-{base64(encodeURIComponent(filename)|pageNum)}
           for (const pageNum of pageNumbers) {
