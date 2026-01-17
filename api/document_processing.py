@@ -25,6 +25,10 @@ def _safe_int(value, default: int = 0) -> int:
     except Exception:
         return default
 
+# Max document size enforced server-side (default 20MB)
+MAX_DOCUMENT_SIZE_MB = _safe_int(os.environ.get("MAX_DOCUMENT_SIZE_MB", "20"), 20)
+MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024
+
 def _estimate_tokens_from_text(text: str) -> int:
     if not text:
         return 0
@@ -95,13 +99,22 @@ async def process_document_endpoint(
         # Verify authentication
         verified_user_id = await verify_auth_token(authorization, request.organizationId)
         
-        # Get document info from database
-        doc_result = supabase.table("documents").select("file_url, name, file_type").eq("id", request.documentId).single().execute()
+        # Get document info from database (include organization_id for security check)
+        doc_result = supabase.table("documents").select("file_url, name, file_type, file_size, organization_id").eq("id", request.documentId).single().execute()
         
         if not doc_result.data:
             raise HTTPException(status_code=404, detail="Document not found")
         
         doc = doc_result.data
+        
+        # Security: Verify document belongs to the organization
+        if doc.get("organization_id") != request.organizationId:
+            raise HTTPException(status_code=403, detail="Access denied: Document does not belong to this organization")
+        
+        # Security: Enforce file size limit server-side
+        file_size = _safe_int(doc.get("file_size") or 0)
+        if file_size > MAX_DOCUMENT_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail=f"Document too large (max {MAX_DOCUMENT_SIZE_MB}MB)")
         
         # Extract path from file_url
         file_url = doc.get("file_url")
@@ -117,6 +130,10 @@ async def process_document_endpoint(
             raise HTTPException(status_code=400, detail="Could not extract file path from URL")
         
         storage_path = unquote(path_parts[1])  # Unquote to handle %20, etc.
+        
+        # Security: Prevent path traversal attacks
+        if ".." in storage_path or storage_path.startswith(("/", "\\")) or "\\" in storage_path:
+            raise HTTPException(status_code=400, detail="Invalid storage path")
         
         # Download file from Supabase Storage to temporary location
         temp_dir = tempfile.mkdtemp()

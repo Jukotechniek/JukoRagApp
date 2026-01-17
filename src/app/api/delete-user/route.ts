@@ -23,16 +23,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, organizationId } = body;
+    const { userId, organizationId, deleteOrphan } = body;
 
-    if (!userId || !organizationId) {
+    if (!userId) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: userId, organizationId' },
+        { success: false, error: 'Missing required field: userId' },
         { status: 400 }
       );
     }
 
-    // Get Supabase URL and anon key for user verification
+    // Get Supabase URL and anon key for user verification (needed for both paths)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseAnonKey) {
@@ -50,6 +50,84 @@ export async function POST(req: NextRequest) {
         },
       },
     });
+
+    // If deleteOrphan is true, we're deleting a user without an organization
+    // Only admins can do this
+    if (deleteOrphan && !organizationId) {
+      // Verify user is admin
+      const { data: { user: authUser }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !authUser) {
+        return NextResponse.json(
+          { success: false, error: "Unauthorized: Invalid or expired token" },
+          { status: 401 }
+        );
+      }
+
+      const { data: userData } = await supabaseClient
+        .from("users")
+        .select("id, role")
+        .eq("id", authUser.id)
+        .single();
+
+      if (!userData || userData.role !== 'admin') {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized: Only admins can delete orphaned users' },
+          { status: 403 }
+        );
+      }
+
+      // Delete orphaned user completely
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseServiceKey) {
+        return NextResponse.json(
+          { success: false, error: 'Server configuration error' },
+          { status: 500 }
+        );
+      }
+
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+
+      // Delete from users table
+      const { error: userDeleteError } = await supabaseAdmin
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (userDeleteError) {
+        console.error('Error deleting orphaned user record:', userDeleteError);
+        return NextResponse.json(
+          { success: false, error: userDeleteError.message || 'Failed to delete user record' },
+          { status: 500 }
+        );
+      }
+
+      // Delete from auth.users
+      const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+      if (authDeleteError) {
+        console.error('Error deleting auth user:', authDeleteError);
+        // Continue even if this fails
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Orphaned user permanently deleted',
+        completelyDeleted: true,
+      });
+    }
+
+    if (!organizationId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required field: organizationId (or deleteOrphan flag)' },
+        { status: 400 }
+      );
+    }
 
     // Verify user is authenticated
     const { data: { user: authUser }, error: authError } = await supabaseClient.auth.getUser(token);

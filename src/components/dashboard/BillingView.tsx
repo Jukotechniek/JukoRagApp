@@ -662,8 +662,8 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="starter">Starter - €19/gebruiker/maand</SelectItem>
-                  <SelectItem value="professional">Professional - €49/gebruiker/maand</SelectItem>
+                  <SelectItem value="starter">Starter - €--/gebruiker/maand</SelectItem>
+                  <SelectItem value="professional">Professional - €--/gebruiker/maand</SelectItem>
                   <SelectItem value="enterprise">Enterprise - Prijs op aanvraag</SelectItem>
                 </SelectContent>
               </Select>

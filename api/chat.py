@@ -825,6 +825,13 @@ async def chat_endpoint_stream(
         # Verify authentication
         verified_user_id = await verify_auth_token(authorization, request.organizationId)
         
+        # Security: Reject userId mismatch to prevent IDOR
+        if request.userId and request.userId != verified_user_id:
+            raise HTTPException(status_code=403, detail="User ID mismatch")
+        
+        # Use verified user ID instead of client-provided one
+        effective_user_id = verified_user_id
+        
         # Create Langfuse trace with detailed step tracking
         trace = None
         trace_context = None
@@ -840,7 +847,7 @@ async def chat_endpoint_stream(
                     "conversation_id": request.conversationId,
                     "question": request.question,
                     "question_length": len(request.question),
-                    "user_id": request.userId,
+                    "user_id": effective_user_id,
                     "model": "gpt-4.1",
                     "embedding_model": "text-embedding-3-small",
                 }
@@ -857,7 +864,7 @@ async def chat_endpoint_stream(
         
         history = load_history(
             request.organizationId,
-            request.userId or "default",
+            effective_user_id,
             request.conversationId,
             limit=8,
             trace=trace,
@@ -1037,7 +1044,7 @@ async def chat_endpoint_stream(
                 scope.set_tag("organization_id", request.organizationId)
                 scope.set_context("request", {
                     "request_id": request_id,
-                    "user_id": request.userId,
+                    "user_id": verified_user_id if 'verified_user_id' in locals() else None,
                     "conversation_id": request.conversationId,
                     "question_length": len(request.question),
                 })
@@ -1096,6 +1103,13 @@ async def chat_endpoint(
         # Verify authentication
         verified_user_id = await verify_auth_token(authorization, request.organizationId)
         
+        # Security: Reject userId mismatch to prevent IDOR
+        if request.userId and request.userId != verified_user_id:
+            raise HTTPException(status_code=403, detail="User ID mismatch")
+        
+        # Use verified user ID instead of client-provided one
+        effective_user_id = verified_user_id
+        
         # Create Langfuse trace
         trace = None
         trace_context = None
@@ -1114,7 +1128,7 @@ async def chat_endpoint(
                     "conversation_id": request.conversationId,
                     "question": request.question,
                     "question_length": len(request.question),
-                    "user_id": request.userId,
+                    "user_id": effective_user_id,
                     "model": "gpt-4.1",  # Add model info to trace
                     "embedding_model": "text-embedding-3-small",  # Embedding model used
                 }
@@ -1130,7 +1144,7 @@ async def chat_endpoint(
         
         history = load_history(
             request.organizationId,
-            request.userId or "default",
+            effective_user_id,
             request.conversationId,
             limit=8,
             trace=trace,
@@ -1300,7 +1314,7 @@ async def chat_endpoint(
                 scope.set_tag("organization_id", request.organizationId)
                 scope.set_context("request", {
                     "request_id": request_id,
-                    "user_id": request.userId,
+                    "user_id": effective_user_id,
                     "conversation_id": request.conversationId,
                     "question_length": len(request.question),
                 })

@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import type { Root, Text, Parent } from 'mdast';
 import { getDocumentWithSignedUrl } from '@/lib/document-utils';
@@ -57,6 +58,21 @@ function parseCitations(text: string): Array<{ filename: string; pageNumbers: nu
   
   return results;
 }
+
+// Sanitization schema that allows citation spans
+const citationSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'span'],
+  attributes: {
+    ...defaultSchema.attributes,
+    span: [
+      ...(defaultSchema.attributes?.span || []),
+      'className',
+      'data-citation-filename',
+      'data-citation-page',
+    ],
+  },
+};
 
 // Custom remark plugin to transform citations
 function remarkCitations() {
@@ -260,7 +276,7 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkCitations]}
-          rehypePlugins={[rehypeRaw]}
+          rehypePlugins={[rehypeRaw, [rehypeSanitize, citationSanitizeSchema]]}
           components={{
           // Custom styling for tables
           table: ({ children }) => (

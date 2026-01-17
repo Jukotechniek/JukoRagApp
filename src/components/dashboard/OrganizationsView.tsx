@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Building, Users, FileText, MoreVertical, Plus, Search } from "lucide-react";
+import { Building, Users, FileText, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -20,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 
@@ -38,12 +55,18 @@ const planColors = {
 };
 
 const OrganizationsView = () => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOrgDialogOpen, setAddOrgDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [orgToDelete, setOrgToDelete] = useState<Organization | null>(null);
   const [newOrg, setNewOrg] = useState({ name: "", plan: "starter" as "starter" | "professional" });
   const { toast } = useToast();
+  
+  // Only admins can delete organizations
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     loadOrganizations();
@@ -135,6 +158,61 @@ const OrganizationsView = () => {
     }
   };
 
+  const handleDeleteOrganization = async () => {
+    if (!orgToDelete || !isAdmin) {
+      toast({
+        title: "Geen rechten",
+        description: "Alleen admins kunnen organisaties verwijderen.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const orgId = orgToDelete.id;
+      const orgName = orgToDelete.name;
+
+      // Get auth token for API call
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Niet ingelogd");
+      }
+
+      // Call API endpoint that uses service role key (bypasses RLS)
+      const response = await fetch("/api/delete-organization", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ organizationId: orgId }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Kon organisatie niet verwijderen");
+      }
+
+      toast({
+        title: "Organisatie verwijderd",
+        description: `${orgName} is verwijderd.`,
+      });
+
+      setDeleteDialogOpen(false);
+      setOrgToDelete(null);
+      await loadOrganizations();
+    } catch (error: any) {
+      console.error("Error deleting organization:", error);
+      const errorMessage = error?.message || "Kon organisatie niet verwijderen.";
+      toast({
+        title: "Fout",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredOrganizations = organizations.filter((org) =>
     org.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -188,9 +266,30 @@ const OrganizationsView = () => {
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                 <Building className="w-6 h-6 text-primary" />
               </div>
-              <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
-                <MoreVertical className="w-4 h-4 text-muted-foreground" />
-              </button>
+              {isAdmin && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-2 hover:bg-secondary rounded-lg transition-colors">
+                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => {
+                        setOrgToDelete(org);
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Verwijderen
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {!isAdmin && (
+                <div className="w-8 h-8" />
+              )}
             </div>
 
             <h3 className="font-display font-semibold text-foreground mb-1">
@@ -251,8 +350,8 @@ const OrganizationsView = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="starter">Starter - €19/gebruiker/maand</SelectItem>
-                  <SelectItem value="professional">Professional - €49/gebruiker/maand</SelectItem>
+                  <SelectItem value="starter">Starter - €--/gebruiker/maand</SelectItem>
+                  <SelectItem value="professional">Professional - €--/gebruiker/maand</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -267,6 +366,31 @@ const OrganizationsView = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Organization Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Organisatie Verwijderen</AlertDialogTitle>
+            <AlertDialogDescription>
+              Weet je zeker dat je "{orgToDelete?.name}" wilt verwijderen? 
+              Deze actie kan niet ongedaan worden gemaakt en zal alle gerelateerde data verwijderen, 
+              inclusief gebruikers, documenten, chat geschiedenis en analytics.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOrgToDelete(null)}>
+              Annuleren
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteOrganization}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

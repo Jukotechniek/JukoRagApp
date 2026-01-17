@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, MoreVertical, Plus, Search, Mail, Shield, Wrench, Trash2, Edit } from "lucide-react";
+import { Users, MoreVertical, Plus, Search, Mail, Shield, Wrench, Trash2, Edit, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +47,7 @@ interface User {
   role: "admin" | "manager" | "technician";
   status: "active" | "inactive";
   lastActive: string;
+  organizationNames?: string[]; // For "Alle organisaties" view
 }
 
 interface UsersViewProps {
@@ -68,12 +69,15 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
   const { toast } = useToast();
 
   // Use selected organization ID or fall back to user's organization
-  const effectiveOrgId = selectedOrganizationId || currentAuthUser?.organization_id || null;
+  // For admin, if selectedOrganizationId is null, show all users
+  const effectiveOrgId = currentRole === "admin" 
+    ? (selectedOrganizationId ?? null)
+    : (selectedOrganizationId || currentAuthUser?.organization_id || null);
 
   // Load users
   useEffect(() => {
     loadUsers();
-  }, [currentRole, currentAuthUser, effectiveOrgId]);
+  }, [currentRole, currentAuthUser, selectedOrganizationId]);
 
   const loadUsers = async () => {
     if (!currentAuthUser) return;
@@ -82,7 +86,40 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
       setLoading(true);
       let query = supabase.from("users").select("*");
 
-      if (currentRole === "admin" && effectiveOrgId) {
+      if (currentRole === "admin" && selectedOrganizationId === null) {
+        // Admin with "Alle organisaties" selected: show ALL users with their organizations
+        const { data, error } = await query.order("created_at", { ascending: false });
+        if (error) throw error;
+        if (data) {
+          // Get organizations for each user
+          const usersWithOrgs = await Promise.all(
+            data.map(async (u) => {
+              const { data: orgData } = await supabase
+                .from("user_organizations")
+                .select("organization_id, organizations(name)")
+                .eq("user_id", u.id);
+
+              const organizationNames = orgData
+                ?.map((uo: any) => uo.organizations?.name)
+                .filter((name: string | undefined) => name) as string[] || [];
+
+              return {
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role as "admin" | "manager" | "technician",
+                status: "active" as const,
+                lastActive: formatDistanceToNow(new Date(u.updated_at), { addSuffix: true, locale: nl }),
+                organizationNames: organizationNames.length > 0 ? organizationNames : undefined,
+              };
+            })
+          );
+
+          setUsers(usersWithOrgs);
+        } else {
+          setUsers([]);
+        }
+      } else if (currentRole === "admin" && effectiveOrgId) {
         // Admin sees users in selected organization
         const { data: orgUsers } = await supabase
           .from("user_organizations")
@@ -246,7 +283,21 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
   };
 
   const confirmDelete = async () => {
-    if (!userToDelete || !effectiveOrgId || !currentAuthUser) return;
+    if (!userToDelete || !currentAuthUser) return;
+
+    // For admins viewing "Alle organisaties", we might need to delete users without an organization
+    // In that case, we'll use a special endpoint that handles users without organizations
+    const userHasNoOrg = currentRole === "admin" && selectedOrganizationId === null && 
+                         (!userToDelete.organizationNames || userToDelete.organizationNames.length === 0);
+
+    if (!effectiveOrgId && !userHasNoOrg) {
+      toast({
+        title: "Fout",
+        description: "Kan gebruiker niet verwijderen zonder organisatie context.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       // Get Supabase session for authorization
@@ -261,7 +312,41 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         return;
       }
 
-      // Use API route to delete user
+      // If user has no organization, use special delete endpoint
+      if (userHasNoOrg) {
+        const response = await fetch('/api/delete-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            userId: userToDelete.id,
+            organizationId: null, // No organization
+            deleteOrphan: true, // Flag to indicate orphaned user
+            currentUserId: currentAuthUser.id,
+            currentUserRole: currentRole,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to delete user');
+        }
+
+        toast({
+          title: "Gebruiker verwijderd",
+          description: `${userToDelete.name} is permanent verwijderd.`,
+        });
+
+        setDeleteDialogOpen(false);
+        setUserToDelete(null);
+        await loadUsers();
+        return;
+      }
+
+      // Use API route to delete user from organization
       // The API will automatically delete completely if user is only in this organization
       const response = await fetch('/api/delete-user', {
         method: 'POST',
@@ -348,6 +433,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         </div>
         <Button 
           variant="hero" 
+          disabled={currentRole === "admin" && selectedOrganizationId === null}
           onClick={() => {
             // Reset form and set default role
             setNewUser({ 
@@ -460,6 +546,12 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
                 <Mail className="w-3 h-3" />
                 <span className="truncate">{user.email}</span>
               </div>
+              {currentRole === "admin" && selectedOrganizationId === null && user.organizationNames && user.organizationNames.length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                  <Building2 className="w-3 h-3" />
+                  <span className="truncate">{user.organizationNames.join(", ")}</span>
+                </div>
+              )}
             </div>
 
             <div className="hidden sm:flex items-center gap-3">
