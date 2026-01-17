@@ -170,7 +170,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
           data.map((inv) => ({
             id: inv.invoice_number || inv.id, // Use invoice_number if available, fallback to id
             date: format(new Date(inv.created_at), "dd-MM-yyyy", { locale: nl }),
-            amount: `€${Number(inv.amount).toFixed(2).replace(".", ",")}`,
+            amount: "--",
             status: inv.status as "paid" | "pending" | "overdue",
             plan: inv.plan,
             organizationId: inv.organization_id,
@@ -207,13 +207,13 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     const planData = {
       starter: {
         name: "Starter",
-        price: "€19",
+        price: "--",
         period: "per gebruiker/maand",
         features: ["10 documenten per gebruiker", "100 vragen/maand per gebruiker", "Basis support", "Basis analytics"],
       },
       professional: {
         name: "Professional",
-        price: "€49",
+        price: "--",
         period: "per gebruiker/maand",
         features: [
           "50 documenten per gebruiker",
@@ -224,7 +224,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
       },
       enterprise: {
         name: "Enterprise",
-        price: "Prijs op aanvraag",
+        price: "--",
         period: "",
         features: [
           "Onbeperkte documenten en gebruikers",
@@ -261,7 +261,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     {
       id: "enterprise",
       name: "Enterprise",
-      price: "Prijs op aanvraag",
+      price: "--",
       period: "",
       features: [
         "Onbeperkte documenten en gebruikers",
