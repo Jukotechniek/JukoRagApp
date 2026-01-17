@@ -14,7 +14,8 @@ if (sentryDsn) {
     tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
 
     // Setting this option to true will print useful information to the console while you're setting up Sentry.
-    debug: process.env.NODE_ENV === 'development',
+    // Disabled in development to reduce console noise - set SENTRY_DEBUG=true to enable
+    debug: process.env.SENTRY_DEBUG === 'true',
 
     // Uncomment the line below to enable Spotlight (https://spotlightjs.com)
     // spotlight: process.env.NODE_ENV === 'development',
@@ -37,12 +38,14 @@ if (sentryDsn) {
     ],
   });
 
-  if (process.env.NODE_ENV === 'development') {
+  // Only log initialization if explicitly requested
+  if (process.env.SENTRY_DEBUG === 'true') {
     console.log('[Sentry] Client-side Sentry initialized successfully');
     console.log(`[Sentry] Environment: ${process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development'}`);
   }
 } else {
-  if (process.env.NODE_ENV === 'development') {
+  // Only warn if explicitly requested
+  if (process.env.SENTRY_DEBUG === 'true') {
     console.warn('[Sentry] NEXT_PUBLIC_SENTRY_DSN not configured, Sentry tracking disabled for client-side');
   }
 }

@@ -202,10 +202,13 @@ export async function POST(req: NextRequest) {
         },
       });
       
-      console.log('[Sentry] Error captured and sent to Sentry:', {
-        message: errorToCapture.message,
-        pythonApiUrl: PYTHON_API_URL,
-      });
+      // Only log to console if debug mode is enabled
+      if (process.env.SENTRY_DEBUG === 'true') {
+        console.log('[Sentry] Error captured and sent to Sentry:', {
+          message: errorToCapture.message,
+          pythonApiUrl: PYTHON_API_URL,
+        });
+      }
     } catch (sentryError) {
       // Even if Sentry capture fails, log it
       console.error('[Sentry] Failed to capture exception:', sentryError);
