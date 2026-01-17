@@ -15,8 +15,8 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 COPY package*.json ./
 COPY bun.lockb ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (--legacy-peer-deps needed for pdfjs-dist version conflict)
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
