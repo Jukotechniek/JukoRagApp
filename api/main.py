@@ -2,7 +2,7 @@
 import os
 from typing import Optional
 from fastapi import FastAPI, Request, Header
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 import uvicorn
 
 from chat import chat_endpoint, chat_endpoint_stream, ChatRequest, ChatResponse
@@ -91,6 +91,17 @@ async def add_cors_header(request: Request, call_next):
 async def health_check():
     """Health check endpoint to test CORS"""
     return {"status": "ok", "message": "API is running"}
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve favicon from the frontend icon.svg to avoid 404s."""
+    icon_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "public", "icon.svg")
+    )
+    if os.path.isfile(icon_path):
+        return FileResponse(icon_path, media_type="image/svg+xml")
+    return Response(status_code=204)
 
 
 @app.api_route("/api/process-document", methods=["OPTIONS"])
