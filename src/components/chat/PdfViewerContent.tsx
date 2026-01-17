@@ -1,11 +1,6 @@
 'use client';
 
-import { Viewer, Worker } from '@react-pdf-viewer/core';
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
-
-// Import CSS for react-pdf-viewer
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+import { useEffect, useRef } from 'react';
 
 interface PDFViewerContentProps {
   pdfUrl: string;
@@ -13,31 +8,49 @@ interface PDFViewerContentProps {
 }
 
 export function PDFViewerContent({ pdfUrl, initialPage }: PDFViewerContentProps) {
-  // Configure the default layout plugin
-  const defaultLayoutPluginInstance = defaultLayoutPlugin({
-    sidebarTabs: (defaultTabs) => [
-      defaultTabs[0], // Thumbnail tab
-      defaultTabs[1], // Bookmark tab
-    ],
-  });
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    // Update iframe src when page or URL changes
+    if (iframeRef.current) {
+      // Add #page=X to the URL to jump to specific page
+      // PDF.js in browser supports this format
+      const urlWithPage = initialPage > 1 
+        ? `${pdfUrl}#page=${initialPage}`
+        : pdfUrl;
+      iframeRef.current.src = urlWithPage;
+    }
+  }, [pdfUrl, initialPage]);
 
   return (
-    <Worker workerUrl="https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.js">
-      <div 
-        style={{ height: '100%', width: '100%', position: 'relative' }}
-        onClick={(e) => {
-          // Prevent clicks from bubbling up to parent elements
-          // This ensures PDF viewer interactions don't interfere with chat
-          e.stopPropagation();
+    <div 
+      className="w-full h-full relative"
+      style={{ 
+        height: '100%', 
+        width: '100%',
+        position: 'relative',
+        minHeight: 0 // Ensure flexbox children can shrink
+      }}
+      onClick={(e) => {
+        // Prevent clicks from bubbling up to parent elements
+        e.stopPropagation();
+      }}
+    >
+      <iframe
+        ref={iframeRef}
+        src={`${pdfUrl}${initialPage > 1 ? `#page=${initialPage}` : ''}`}
+        className="w-full h-full border-0"
+        style={{
+          width: '100%',
+          height: '100%',
+          border: 'none',
+          minHeight: 0
         }}
-      >
-        <Viewer
-          fileUrl={pdfUrl}
-          plugins={[defaultLayoutPluginInstance]}
-          initialPage={initialPage - 1} // react-pdf-viewer uses 0-based indexing
-        />
-      </div>
-    </Worker>
+        title="PDF Viewer"
+        // Allow touch gestures for mobile pinch-to-zoom
+        allow="fullscreen"
+      />
+    </div>
   );
 }
 

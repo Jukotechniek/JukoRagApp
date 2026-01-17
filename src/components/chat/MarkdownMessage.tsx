@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -59,7 +59,8 @@ function parseCitations(text: string): Array<{ filename: string; pageNumbers: nu
   return results;
 }
 
-// Sanitization schema that allows citation spans
+// Sanitization schema that allows citation spans with data attributes
+// Use propertyMatches to allow all data-* attributes on span elements
 const citationSanitizeSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames || []), 'span'],
@@ -68,6 +69,7 @@ const citationSanitizeSchema = {
     span: [
       ...(defaultSchema.attributes?.span || []),
       'className',
+      'class',
       'data-citation-filename',
       'data-citation-page',
     ],
@@ -126,10 +128,27 @@ function remarkCitations() {
           }
           
           // Now replace placeholders with actual HTML links
+          // HTML escape the filename to prevent issues with special characters
+          const escapedFilename = filename
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+          
+          // Encode citation data in id attribute as base64 to avoid sanitizer issues
+          // Format: citation-{base64(encodeURIComponent(filename)|pageNum)}
           for (const pageNum of pageNumbers) {
             const pageNumStr = pageNum.toString();
             const placeholder = `__PAGE_${pageNum}_PLACEHOLDER__`;
-            const linkHtml = `<span data-citation-filename="${filename}" data-citation-page="${pageNum}" class="citation-page-link text-red-600 dark:text-red-400 cursor-pointer hover:underline font-medium">${pageNumStr}</span>`;
+            // Encode filename with encodeURIComponent first to handle special chars, then base64
+            // Format: encodeURIComponent(filename)|pageNum
+            const encodedFilename = encodeURIComponent(filename);
+            const citationData = `${encodedFilename}|${pageNum}`;
+            // Use base64 encoding and make URL-safe
+            const base64 = btoa(unescape(encodeURIComponent(citationData)));
+            const citationId = base64.replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m] || ''));
+            const linkHtml = `<span id="citation-${citationId}" class="citation-page-link text-red-600 dark:text-red-400 cursor-pointer hover:underline font-medium">${pageNumStr}</span>`;
             replacedPageNumbers = replacedPageNumbers.replace(placeholder, linkHtml);
           }
 
@@ -195,6 +214,7 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
   const [pdfPage, setPdfPage] = useState<number>(1);
   const [pdfDocumentName, setPdfDocumentName] = useState<string>('Document');
   const containerRef = useRef<HTMLDivElement>(null);
+  const handleCitationClickRef = useRef<((filename: string, pageNumber: number) => Promise<void>) | null>(null);
 
   const handleCitationClick = useCallback(async (filename: string, pageNumber: number) => {
     try {
@@ -227,33 +247,91 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
   }, [user?.organization_id, toast]);
 
   // Attach click handlers to citation links after render
+  // Initialize ref immediately when callback is created
+  useEffect(() => {
+    handleCitationClickRef.current = handleCitationClick;
+  }, [handleCitationClick]);
+
+  // Attach click handlers to citation links after render
+  // Use useEffect instead of useLayoutEffect to ensure container is mounted
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      const citationLink = target.closest('.citation-page-link');
+      // Find the citation link - check if target itself is the link, or traverse up
+      let citationLink: HTMLElement | null = null;
+      
+      if (target.classList.contains('citation-page-link')) {
+        citationLink = target;
+      } else {
+        citationLink = target.closest('.citation-page-link') as HTMLElement;
+      }
       
       if (citationLink) {
         e.preventDefault();
         e.stopPropagation();
-        const filename = citationLink.getAttribute('data-citation-filename');
-        const pageNumber = citationLink.getAttribute('data-citation-page');
+        
+        // Get citation data from id attribute (encoded as base64)
+        // Note: ReactMarkdown/rehype may add "user-content-" prefix to IDs
+        const citationId = citationLink.id;
+        let filename: string | null = null;
+        let pageNumber: number | null = null;
+        
+        // Handle both "citation-" and "user-content-citation-" prefixes
+        if (citationId && (citationId.startsWith('citation-') || citationId.startsWith('user-content-citation-'))) {
+          try {
+            // Remove prefix(es) to get the actual encoded data
+            const base64Encoded = citationId.replace(/^(user-content-)?citation-/, '');
+            // Decode base64: convert URL-safe base64 back to regular base64
+            const base64Data = base64Encoded.replace(/-/g, '+').replace(/_/g, '/');
+            // Add padding if needed
+            const padded = base64Data + '='.repeat((4 - (base64Data.length % 4)) % 4);
+            const decoded = decodeURIComponent(escape(atob(padded)));
+            const [encodedFilename, pageNumStr] = decoded.split('|');
+            // Decode the filename from URI encoding
+            filename = decodeURIComponent(encodedFilename);
+            pageNumber = parseInt(pageNumStr, 10);
+          } catch (error) {
+            console.error('Failed to decode citation ID:', error, citationId);
+          }
+        }
+        
+        // Fallback: try data attributes if id method fails
+        if (!filename || !pageNumber) {
+          filename = citationLink.getAttribute('data-citation-filename');
+          const pageNumAttr = citationLink.getAttribute('data-citation-page');
+          if (pageNumAttr) {
+            pageNumber = parseInt(pageNumAttr, 10);
+          }
+        }
         
         if (filename && pageNumber) {
-          handleCitationClick(filename, parseInt(pageNumber, 10));
+          // Use the ref if available, otherwise call directly (fallback)
+          const handler = handleCitationClickRef.current || handleCitationClick;
+          handler(filename, pageNumber);
+        } else {
+          console.warn('Citation click failed:', { 
+            filename, 
+            pageNumber, 
+            citationId,
+            hasRef: !!handleCitationClickRef.current,
+            elementClasses: citationLink.className,
+            allAttributes: Array.from(citationLink.attributes).map(attr => ({ name: attr.name, value: attr.value }))
+          });
         }
       }
     };
 
-    // Use capture phase to ensure we catch clicks before PDF viewer
+    // Use capture phase to ensure we catch clicks before other handlers
+    // Event delegation means we don't need to re-attach when content changes
     container.addEventListener('click', handleClick, true);
     
     return () => {
       container.removeEventListener('click', handleClick, true);
     };
-  }, [handleCitationClick, content, pdfDialogOpen]);
+  }, [handleCitationClick]); // Include handleCitationClick for fallback, but use ref for actual calls
 
   return (
     <>

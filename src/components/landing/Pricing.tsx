@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 const plans = [
   {
     name: "Starter",
-    price: "€19",
+    price: "--",
     period: "/gebruiker/maand",
     description: "Perfect voor kleine teams en individuele gebruikers",
     features: [
@@ -18,7 +18,7 @@ const plans = [
   },
   {
     name: "Professional",
-    price: "€49",
+    price: "--",
     period: "/gebruiker/maand",
     description: "Voor groeiende bedrijven die meer nodig hebben",
     features: [
