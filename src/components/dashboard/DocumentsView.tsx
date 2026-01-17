@@ -126,19 +126,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
   // Technicians can upload/view when techniciansCanViewDocuments is true
   // Managers and admins can always edit
   const canEdit = user?.role !== "technician" || techniciansCanViewDocuments;
-  const isReadOnly = false; // Not used anymore - technicians can edit when permission is granted
 
-  // Debug logging
-  useEffect(() => {
-    if (user?.role === "technician") {
-      console.log("Technician permissions:", {
-        role: user.role,
-        techniciansCanViewDocuments: techniciansCanViewDocuments,
-        canEdit: canEdit,
-        isReadOnly: isReadOnly
-      });
-    }
-  }, [user?.role, techniciansCanViewDocuments, canEdit, isReadOnly]);
 
   // Load organization settings - load for all users to check permissions
   useEffect(() => {
@@ -165,14 +153,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       if (data) {
         // Handle null/undefined values - default to false
         const canView = data.technicians_can_view_documents === true;
-        console.log("Organization setting loaded:", {
-          raw: data.technicians_can_view_documents,
-          canView: canView,
-          organizationId: effectiveOrgId
-        });
         setTechniciansCanViewDocuments(canView);
-      } else {
-        console.log("No organization data returned for:", effectiveOrgId);
       }
     } catch (error) {
       console.error("Error loading organization settings:", error);
@@ -199,8 +180,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
     try {
       setLoading(true);
-      console.log("Loading documents for organization:", effectiveOrgId);
-      console.log("User role:", user?.role);
       
       // Use regular Supabase query (RLS policies handle permissions for all users including admins)
       const { data, error } = await supabase
@@ -217,13 +196,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error loading documents:", error);
         throw error;
-      }
-
-      console.log("Documents loaded:", data?.length || 0, "for organization:", effectiveOrgId);
-      if (data && data.length > 0) {
-        console.log("Document details:", data);
       }
 
       if (data) {
@@ -527,7 +500,56 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
     if (!documentToDelete || !effectiveOrgId || !canEdit) return;
 
     try {
-      // 1) Verwijder alle gekoppelde embeddings (document_sections)
+      // 1) Verwijder eerst het bestand uit storage (voordat we database records verwijderen)
+      let storageDeleted = false;
+      if (documentToDelete.file_url) {
+        try {
+          // Extract storage path from URL
+          // URL format: https://xxx.supabase.co/storage/v1/object/documents/org-id/timestamp-random.ext
+          // Or: https://xxx.supabase.co/storage/v1/object/documents/org-id%2Ftimestamp-random.ext
+          let storagePath: string | null = null;
+          
+          // Try multiple URL patterns
+          const urlMatch1 = documentToDelete.file_url.match(/\/documents\/(.+)$/);
+          const urlMatch2 = documentToDelete.file_url.match(/\/storage\/v1\/object\/documents\/(.+)$/);
+          
+          if (urlMatch1 && urlMatch1[1]) {
+            storagePath = decodeURIComponent(urlMatch1[1]);
+          } else if (urlMatch2 && urlMatch2[1]) {
+            storagePath = decodeURIComponent(urlMatch2[1]);
+          }
+          
+          if (storagePath) {
+            // Delete the file from storage (RLS policies handle permissions)
+            const { data: removeData, error: storageError } = await supabase.storage
+              .from("documents")
+              .remove([storagePath]);
+            
+            if (storageError) {
+              toast({
+                title: "Waarschuwing",
+                description: `Bestand kon niet uit storage worden verwijderd: ${storageError.message}. Database record wordt wel verwijderd.`,
+                variant: "destructive",
+                duration: 5000,
+              });
+            } else if (removeData && Array.isArray(removeData) && removeData.length > 0) {
+              storageDeleted = true;
+            }
+          } else {
+            toast({
+              title: "Waarschuwing",
+              description: "Kon storage pad niet extraheren uit URL. Database record wordt wel verwijderd.",
+              variant: "destructive",
+              duration: 5000,
+            });
+          }
+        } catch (error) {
+          console.error("Error extracting storage path from URL:", error);
+          // Continue with database deletion
+        }
+      }
+
+      // 2) Verwijder alle gekoppelde embeddings (document_sections)
       const { error: sectionsError } = await supabase
         .from("document_sections")
         .delete()
@@ -535,44 +557,27 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
 
       if (sectionsError) {
         console.error("Error deleting document sections:", sectionsError);
+        // Continue anyway
       }
 
-      // 2) Verwijder document record zelf
+      // 3) Verwijder document record zelf
       const { error: dbError } = await supabase
         .from("documents")
         .delete()
         .eq("id", documentToDelete.id)
         .eq("organization_id", effectiveOrgId);
 
-      if (dbError) throw dbError;
-
-      // Delete from storage if URL exists
-      if (documentToDelete.file_url) {
-        try {
-          // Extract storage path from URL
-          // URL format: https://xxx.supabase.co/storage/v1/object/documents/org-id/timestamp-random.ext
-          const urlMatch = documentToDelete.file_url.match(/\/documents\/(.+)$/);
-          if (urlMatch && urlMatch[1]) {
-            // Decode URL-encoded path
-            const storagePath = decodeURIComponent(urlMatch[1]);
-            const { error: storageError } = await supabase.storage
-              .from("documents")
-              .remove([storagePath]);
-            
-            if (storageError) {
-              console.error("Error deleting file from storage:", storageError);
-              // Don't throw - we've already deleted from DB, just log the error
-            }
-          }
-        } catch (error) {
-          console.error("Error extracting storage path from URL:", error);
-          // Don't throw - we've already deleted from DB, just log the error
+      if (dbError) {
+        // If database deletion fails but storage was deleted, that's a problem
+        if (storageDeleted) {
+          throw new Error(`Database verwijdering mislukt, maar bestand is al uit storage verwijderd: ${dbError.message}`);
         }
+        throw dbError;
       }
 
       toast({
         title: "Document verwijderd",
-        description: `${documentToDelete.name} is verwijderd.`,
+        description: `${documentToDelete.name} is verwijderd${storageDeleted ? '' : ' (bestand uit storage verwijderen mislukt)'}.`,
         duration: 3000,
       });
 
@@ -580,9 +585,10 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       setDocumentToDelete(null);
       await loadDocuments();
     } catch (error: any) {
+      console.error("Error deleting document:", error);
       toast({
         title: "Verwijderen mislukt",
-        description: error.message || "Er is een fout opgetreden.",
+        description: error.message || "Er is een fout opgetreden bij het verwijderen.",
         variant: "destructive",
         duration: 5000,
       });
