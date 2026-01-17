@@ -202,68 +202,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
       console.log("Loading documents for organization:", effectiveOrgId);
       console.log("User role:", user?.role);
       
-      // For admins, use API route with service role to bypass RLS
-      if (user?.role === "admin") {
-        // Get the auth token from Supabase session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          throw new Error("Not authenticated");
-        }
-
-        const response = await fetch("/api/get-documents", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            organizationId: effectiveOrgId,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to load documents");
-        }
-
-        const { documents } = await response.json();
-        const data = documents;
-        
-        console.log("Documents loaded via API:", data?.length || 0, "for organization:", effectiveOrgId);
-        
-        if (data && data.length > 0) {
-          const formattedDocs: Document[] = (data as (DocumentRow & { users?: { name: string } | null })[]).map((doc) => {
-            // Determine file type from file_type
-            let type: "pdf" | "docx" | "xlsx" | "image" = "pdf";
-            if (doc.file_type.includes("word") || doc.file_type.includes("docx")) type = "docx";
-            else if (doc.file_type.includes("spreadsheet") || doc.file_type.includes("xlsx")) type = "xlsx";
-            else if (doc.file_type.includes("image")) type = "image";
-
-            // Format size
-            const sizeInMB = (doc.file_size / (1024 * 1024)).toFixed(1);
-            const sizeString = sizeInMB === "0.0" ? `${(doc.file_size / 1024).toFixed(0)} KB` : `${sizeInMB} MB`;
-
-            return {
-              id: doc.id,
-              name: doc.name,
-              type,
-              size: sizeString,
-              uploadedBy: doc.users?.name || "Onbekend",
-              uploadedAt: formatDistanceToNow(new Date(doc.created_at), { addSuffix: true, locale: nl }),
-              file_url: doc.file_url,
-              use_for_rag: doc.use_for_rag ?? false,
-            };
-          });
-
-          setDocuments(formattedDocs);
-        } else {
-          setDocuments([]);
-        }
-        setLoading(false);
-        return;
-      }
-      
-      // For non-admin users, use regular Supabase query
+      // Use regular Supabase query (RLS policies handle permissions for all users including admins)
       const { data, error } = await supabase
         .from("documents")
         .select(
@@ -494,7 +433,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         // Construct storage URL without /public/ (direct storage access)
         const storageUrl = `${supabaseUrl}/storage/v1/object/documents/${encodeURIComponent(fileName)}`;
 
-        // Save document metadata to database
+        // Save document metadata to database (RLS policies handle admin permissions)
         const { error: dbError } = await (supabase
           .from("documents") as any)
           .insert({
