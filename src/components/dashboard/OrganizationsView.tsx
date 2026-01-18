@@ -143,6 +143,7 @@ const OrganizationsView = () => {
       toast({
         title: "Organisatie toegevoegd",
         description: `${newOrg.name} is toegevoegd.`,
+        duration: 3000,
       });
 
       setAddOrgDialogOpen(false);
@@ -197,6 +198,7 @@ const OrganizationsView = () => {
       toast({
         title: "Organisatie verwijderd",
         description: `${orgName} is verwijderd.`,
+        duration: 3000,
       });
 
       setDeleteDialogOpen(false);

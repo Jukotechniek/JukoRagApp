@@ -40,6 +40,15 @@ import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { sendChatMessageStream } from "@/lib/chat";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Message {
   id: string;
@@ -65,6 +74,9 @@ export default function DashboardPage() {
   const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportUserMessage, setReportUserMessage] = useState("");
+  const [reportingMessage, setReportingMessage] = useState<{ id: string; content: string } | null>(null);
   const [techniciansCanViewDocuments, setTechniciansCanViewDocuments] = useState(false);
   const [homeUrl, setHomeUrl] = useState('/');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -565,19 +577,36 @@ export default function DashboardPage() {
     }
   };
 
-  const handleReportError = async (messageId: string, messageContent: string) => {
+  const handleReportError = (messageId: string, messageContent: string) => {
     if (!user || !effectiveOrgId || reportingMessageId === messageId) return;
+    
+    // Open dialog instead of immediately reporting
+    setReportingMessage({ id: messageId, content: messageContent });
+    setReportUserMessage("");
+    setReportDialogOpen(true);
+  };
 
-    setReportingMessageId(messageId);
+  const handleSubmitReport = async () => {
+    if (!user || !effectiveOrgId || !reportingMessage) return;
+
+    setReportingMessageId(reportingMessage.id);
     try {
+      // Get auth token from Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
       const response = await fetch('/api/report-error', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          messageId,
-          messageContent,
+          messageId: reportingMessage.id,
+          messageContent: reportingMessage.content,
+          userMessage: reportUserMessage.trim() || undefined,
           userId: user.id,
           organizationId: effectiveOrgId,
         }),
@@ -592,7 +621,13 @@ export default function DashboardPage() {
       toast({
         title: "Bedankt!",
         description: "Het foute antwoord is gerapporteerd. We zullen dit bekijken.",
+        duration: 3000,
       });
+      
+      // Close dialog
+      setReportDialogOpen(false);
+      setReportUserMessage("");
+      setReportingMessage(null);
     } catch (error: any) {
       console.error('Error reporting incorrect answer:', error);
       toast({
@@ -916,6 +951,46 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Report Error Dialog */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rapporteer fout antwoord</DialogTitle>
+            <DialogDescription>
+              Beschrijf wat er fout is aan dit antwoord. Dit helpt ons om de AI te verbeteren.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Textarea
+              placeholder="Bijvoorbeeld: Het antwoord is onvolledig, bevat verkeerde informatie, of mist belangrijke details..."
+              value={reportUserMessage}
+              onChange={(e) => setReportUserMessage(e.target.value)}
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReportDialogOpen(false);
+                setReportUserMessage("");
+                setReportingMessage(null);
+              }}
+              disabled={reportingMessageId === reportingMessage?.id}
+            >
+              Annuleren
+            </Button>
+            <Button
+              onClick={handleSubmitReport}
+              disabled={reportingMessageId === reportingMessage?.id}
+            >
+              {reportingMessageId === reportingMessage?.id ? "Rapporteren..." : "Rapporteren"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

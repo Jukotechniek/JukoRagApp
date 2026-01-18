@@ -256,11 +256,13 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         toast({
           title: "Gebruiker toegevoegd",
           description: `${newUser.name} is toegevoegd aan het team. Een invite email is verzonden naar ${newUser.email}.`,
+          duration: 3000,
         });
       } else {
         toast({
           title: "Gebruiker toegevoegd",
           description: `${newUser.name} is toegevoegd aan het team. Deze gebruiker bestaat al in het systeem.`,
+          duration: 3000,
         });
       }
 
@@ -338,6 +340,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
         toast({
           title: "Gebruiker verwijderd",
           description: `${userToDelete.name} is permanent verwijderd.`,
+          duration: 3000,
         });
 
         setDeleteDialogOpen(false);
@@ -372,6 +375,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
       toast({
         title: "Gebruiker verwijderd",
         description: `${userToDelete.name} is verwijderd uit het team.`,
+        duration: 3000,
       });
 
       setDeleteDialogOpen(false);
@@ -404,6 +408,7 @@ const UsersView = ({ currentRole, selectedOrganizationId }: UsersViewProps) => {
       toast({
         title: "Profiel bijgewerkt",
         description: "Uw profiel is succesvol bijgewerkt.",
+        duration: 3000,
       });
       setEditProfileDialogOpen(false);
       // Reload users to show updated name

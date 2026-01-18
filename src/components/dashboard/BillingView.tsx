@@ -287,6 +287,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
     toast({
       title: "Betalingsmethode bijgewerkt",
       description: "Uw betalingsgegevens zijn succesvol opgeslagen.",
+      duration: 3000,
     });
     setPaymentDialogOpen(false);
     setCardNumber("");
@@ -305,6 +306,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
       toast({
         title: "Abonnement gewijzigd",
         description: `Uw abonnement is gewijzigd naar ${plans.find((p) => p.id === planId)?.name}.`,
+        duration: 3000,
       });
     }
   };
@@ -330,6 +332,7 @@ const BillingView = ({ selectedOrganizationId: propSelectedOrgId }: BillingViewP
       toast({
         title: "Abonnement gewijzigd",
         description: `Abonnement voor ${selectedOrganization.name} is gewijzigd naar ${plans.find((p) => p.id === newPlan)?.name}.`,
+        duration: 3000,
       });
       setChangePlanDialogOpen(false);
     } catch (error: any) {

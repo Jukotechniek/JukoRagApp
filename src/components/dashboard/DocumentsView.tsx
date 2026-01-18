@@ -232,7 +232,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Fout",
         description: error.message || "Kon documenten niet laden.",
         variant: "destructive",
-        duration: 5000,
       });
       setDocuments([]);
     } finally {
@@ -264,7 +263,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Leeg bestand",
           description: `${file.name} is leeg. Upload alleen bestanden met inhoud.`,
           variant: "destructive",
-          duration: 5000,
         });
         continue;
       }
@@ -289,7 +287,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: ".doc bestanden niet ondersteund",
           description: `${file.name} is een oud Word-formaat (.doc). Converteer het bestand naar .docx formaat en upload het opnieuw. Open het bestand in Microsoft Word en sla het op als .docx.`,
           variant: "destructive",
-          duration: 5000,
         });
         continue;
       }
@@ -299,7 +296,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Ongeldig bestandstype",
           description: `${file.name} heeft een ongeldig type. Toegestaan: Word (.docx), Notepad (.txt), Excel (.xls, .xlsx), PDF (.pdf).`,
           variant: "destructive",
-          duration: 5000,
         });
         continue;
       }
@@ -310,7 +306,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Bestand te groot",
           description: `${file.name} is te groot. Maximum grootte is 20MB.`,
           variant: "destructive",
-          duration: 5000,
         });
         continue;
       }
@@ -331,7 +326,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
               title: "Leeg bestand",
               description: `${file.name} bevat alleen lege regels. Upload alleen bestanden met inhoud.`,
               variant: "destructive",
-              duration: 5000,
             });
             continue;
           }
@@ -348,7 +342,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Bestand bestaat al",
           description: `Een bestand met de naam "${file.name}" bestaat al. Verwijder het bestaande bestand eerst of gebruik een andere naam.`,
           variant: "destructive",
-          duration: 5000,
         });
         continue;
       }
@@ -461,7 +454,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
           title: "Upload mislukt",
           description: error.message || "Er is een fout opgetreden bij het uploaden.",
           variant: "destructive",
-          duration: 5000,
         });
       }
     }
@@ -530,7 +522,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
                 title: "Waarschuwing",
                 description: `Bestand kon niet uit storage worden verwijderd: ${storageError.message}. Database record wordt wel verwijderd.`,
                 variant: "destructive",
-                duration: 5000,
               });
             } else if (removeData && Array.isArray(removeData) && removeData.length > 0) {
               storageDeleted = true;
@@ -540,7 +531,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
               title: "Waarschuwing",
               description: "Kon storage pad niet extraheren uit URL. Database record wordt wel verwijderd.",
               variant: "destructive",
-              duration: 5000,
             });
           }
         } catch (error) {
@@ -590,7 +580,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Verwijderen mislukt",
         description: error.message || "Er is een fout opgetreden bij het verwijderen.",
         variant: "destructive",
-        duration: 5000,
       });
     }
   };
@@ -601,7 +590,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Geen downloadlink",
         description: "Er is geen bestand gekoppeld aan dit document.",
         variant: "destructive",
-        duration: 5000,
       });
       return;
     }
@@ -631,7 +619,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Download mislukt",
         description: "Het bestand kon niet worden geopend.",
         variant: "destructive",
-        duration: 5000,
       });
     }
   };
@@ -684,7 +671,7 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         toast({
           title: "RAG ingeschakeld",
           description: `${doc.name} wordt verwerkt voor RAG...`,
-          duration: 2000,
+          duration: 3000,
         });
 
         try {
@@ -720,7 +707,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
             title: "⚠️ RAG ingeschakeld, maar verwerking mislukt",
             description: `${doc.name} is ingeschakeld voor RAG, maar verwerking is mislukt. ${errorMessage.includes('timeout') ? 'Het bestand is mogelijk te groot.' : ''} Controleer de console voor meer details.`,
             variant: "destructive",
-            duration: 7000, // Longer duration to give user time to read
           });
         }
       } else {
@@ -745,7 +731,6 @@ const DocumentsView = ({ selectedOrganizationId }: DocumentsViewProps) => {
         title: "Fout",
         description: error.message || "Kon RAG instelling niet updaten.",
         variant: "destructive",
-        duration: 5000,
       });
     }
   };

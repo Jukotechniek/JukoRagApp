@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { messageId, messageContent, userId, organizationId } = body;
+    const { messageId, messageContent, userMessage, userId, organizationId } = body;
 
     // Validate required fields
     if (!organizationId || !messageId) {
@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
       organization_id: organizationId,
       message_id: messageId,
       message_content: messageContent || '',
+      user_message: userMessage || '',
       timestamp: new Date().toISOString(),
       report_type: 'incorrect_answer',
     };

@@ -120,6 +120,7 @@ const SettingsView = () => {
       toast({
         title: "Profiel bijgewerkt",
         description: "Uw profielgegevens zijn succesvol opgeslagen.",
+        duration: 3000,
       });
     } catch (error: any) {
       toast({
@@ -140,6 +141,7 @@ const SettingsView = () => {
       toast({
         title: "Beveiligingsinstellingen bijgewerkt",
         description: "Uw beveiligingsinstellingen zijn opgeslagen.",
+        duration: 3000,
       });
     } catch (error: any) {
       toast({
@@ -158,6 +160,7 @@ const SettingsView = () => {
       toast({
         title: "Thema bijgewerkt",
         description: "Uw thema is opgeslagen.",
+        duration: 3000,
       });
     } catch (error: any) {
       toast({
@@ -335,6 +338,7 @@ const SettingsView = () => {
                         toast({
                           title: "Instelling opgeslagen",
                           description: "Twee-factor authenticatie is bijgewerkt.",
+                          duration: 3000,
                         });
                       } catch (error: any) {
                         setSecurity({ ...security, twoFactor: previousValue });
@@ -359,6 +363,7 @@ const SettingsView = () => {
                         toast({
                           title: "Instelling opgeslagen",
                           description: "Sessie timeout is bijgewerkt.",
+                          duration: 3000,
                         });
                       } catch (error: any) {
                         setSecurity({ ...security, sessionTimeout: previousValue });
@@ -521,6 +526,7 @@ const SettingsView = () => {
                           toast({
                             title: "Instelling opgeslagen",
                             description: "De instelling is succesvol bijgewerkt.",
+                            duration: 3000,
                           });
                         } catch (error: any) {
                           console.error("Error saving organization settings:", error);
