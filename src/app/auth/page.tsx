@@ -24,6 +24,7 @@ function AuthPageContent() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
+    confirmPassword: "",
     name: "",
     organization: "",
   });
@@ -121,6 +122,27 @@ function AuthPageContent() {
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate passwords match
+    if (formData.password !== formData.confirmPassword) {
+      toast({
+        title: "Wachtwoorden komen niet overeen",
+        description: "Beide wachtwoordvelden moeten hetzelfde zijn.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Validate password length
+    if (formData.password.length < 8) {
+      toast({
+        title: "Wachtwoord te kort",
+        description: "Wachtwoord moet minimaal 8 tekens lang zijn.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
@@ -144,6 +166,9 @@ function AuthPageContent() {
         description: "Uw wachtwoord is succesvol ingesteld. U wordt doorgestuurd...",
       });
 
+      // Reset form data
+      setFormData({ email: "", password: "", confirmPassword: "", name: "", organization: "" });
+      
       // Reset setting password state
       setIsSettingPassword(false);
       
@@ -382,12 +407,34 @@ function AuthPageContent() {
               </div>
             </div>
 
+            {isSettingPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Bevestig wachtwoord</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    className="pl-10"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    required
+                    minLength={8}
+                  />
+                </div>
+                {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                  <p className="text-sm text-destructive">Wachtwoorden komen niet overeen</p>
+                )}
+              </div>
+            )}
+
             <Button
               type="submit"
               variant="hero"
               size="lg"
               className="w-full"
-              disabled={isLoading}
+              disabled={isLoading || (isSettingPassword && formData.password !== formData.confirmPassword)}
             >
               {isLoading 
                 ? "Even geduld..." 
