@@ -20,6 +20,7 @@ function AuthPageContent() {
   const [homeUrl, setHomeUrl] = useState('/');
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -120,9 +121,7 @@ function AuthPageContent() {
     }
   }, [supabaseUser, isLoading, isSettingPassword, router, toast]);
 
-  const handleSetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSetPassword = async () => {
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       toast({
@@ -130,6 +129,7 @@ function AuthPageContent() {
         description: "Beide wachtwoordvelden moeten hetzelfde zijn.",
         variant: "destructive",
       });
+      setIsLoading(false);
       return;
     }
     
@@ -140,10 +140,9 @@ function AuthPageContent() {
         description: "Wachtwoord moet minimaal 8 tekens lang zijn.",
         variant: "destructive",
       });
+      setIsLoading(false);
       return;
     }
-    
-    setIsLoading(true);
 
     try {
       // Update password for invited user
@@ -192,6 +191,13 @@ function AuthPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent double submission
+    if (isSubmitting || isLoading) {
+      return;
+    }
+    
+    setIsSubmitting(true);
     setIsLoading(true);
 
     // Safety timeout - always reset loading after max 10 seconds
@@ -201,7 +207,7 @@ function AuthPageContent() {
 
     try {
       if (isSettingPassword) {
-        await handleSetPassword(e);
+        await handleSetPassword();
         clearTimeout(safetyTimeout);
         return;
       }
@@ -271,6 +277,8 @@ function AuthPageContent() {
         variant: "destructive",
       });
       setIsLoading(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -328,7 +336,7 @@ function AuthPageContent() {
                     type="email"
                     value={formData.email}
                     disabled
-                    className="pl-10 bg-muted"
+                    className="pl-10 bg-muted text-foreground disabled:text-foreground disabled:opacity-100"
                   />
                 </div>
               </div>
@@ -433,8 +441,8 @@ function AuthPageContent() {
               type="submit"
               variant="hero"
               size="lg"
-              className="w-full"
-              disabled={isLoading || (isSettingPassword && formData.password !== formData.confirmPassword)}
+              className="w-full touch-manipulation"
+              disabled={isLoading || isSubmitting || (isSettingPassword && (!formData.password || !formData.confirmPassword || formData.password !== formData.confirmPassword))}
             >
               {isLoading 
                 ? "Even geduld..." 
