@@ -71,11 +71,49 @@ function AuthPageContent() {
             supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: params.get('refresh_token') || '',
-            }).then(({ data }) => {
-              if (data?.user?.email) {
-                const userEmail = data.user.email;
-                setFormData(prev => ({ ...prev, email: userEmail }));
+            }).then(async ({ data, error }) => {
+              if (error) {
+                console.error("Error setting session:", error);
+                toast({
+                  title: "Fout",
+                  description: "Kon sessie niet instellen. Probeer de link opnieuw.",
+                  variant: "destructive",
+                });
+                return;
               }
+              
+              // Try multiple sources for email
+              let userEmail = data?.user?.email;
+              
+              // If email not in user object, try to get it from user metadata or user_metadata
+              if (!userEmail) {
+                userEmail = data?.user?.user_metadata?.email || 
+                           data?.user?.app_metadata?.email;
+              }
+              
+              // If still no email, try to get current session
+              if (!userEmail) {
+                const { data: sessionData } = await supabase.auth.getSession();
+                userEmail = sessionData?.session?.user?.email;
+              }
+              
+              if (userEmail) {
+                setFormData(prev => ({ ...prev, email: userEmail }));
+              } else {
+                console.error("No email found in user data");
+                toast({
+                  title: "Fout",
+                  description: "Kon email niet laden. Probeer de link opnieuw.",
+                  variant: "destructive",
+                });
+              }
+            }).catch((error) => {
+              console.error("Error in setSession:", error);
+              toast({
+                title: "Fout",
+                description: "Er is een fout opgetreden bij het laden van de invite.",
+                variant: "destructive",
+              });
             });
           }
         }
@@ -122,6 +160,18 @@ function AuthPageContent() {
   }, [supabaseUser, isLoading, isSettingPassword, router, toast]);
 
   const handleSetPassword = async () => {
+    // Validate email is present
+    if (!formData.email || !formData.email.trim()) {
+      toast({
+        title: "Email ontbreekt",
+        description: "Vul uw emailadres in om door te gaan.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      setIsSubmitting(false);
+      return;
+    }
+    
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       toast({
@@ -130,6 +180,7 @@ function AuthPageContent() {
         variant: "destructive",
       });
       setIsLoading(false);
+      setIsSubmitting(false);
       return;
     }
     
@@ -141,29 +192,55 @@ function AuthPageContent() {
         variant: "destructive",
       });
       setIsLoading(false);
+      setIsSubmitting(false);
       return;
     }
 
     try {
+      // Verify we have a session before updating password
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !sessionData?.session) {
+        console.error("No active session:", sessionError);
+        toast({
+          title: "Sessie verlopen",
+          description: "Uw sessie is verlopen. Gebruik de invite link opnieuw.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
+
       // Update password for invited user
-      const { error } = await supabase.auth.updateUser({
+      const { data, error } = await supabase.auth.updateUser({
         password: formData.password,
       });
 
       if (error) {
+        console.error("Error updating password:", error);
         toast({
           title: "Fout",
-          description: error.message || "Kon wachtwoord niet instellen.",
+          description: error.message || "Kon wachtwoord niet instellen. Probeer het opnieuw.",
           variant: "destructive",
         });
         setIsLoading(false);
+        setIsSubmitting(false);
         return;
       }
 
-      toast({
-        title: "Wachtwoord ingesteld",
-        description: "Uw wachtwoord is succesvol ingesteld. U wordt doorgestuurd...",
-      });
+      // Verify the password was updated by checking the session
+      if (!data?.user) {
+        console.error("No user data after password update");
+        toast({
+          title: "Fout",
+          description: "Wachtwoord update voltooid maar kon gebruikersgegevens niet verifiëren.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
 
       // Reset form data
       setFormData({ email: "", password: "", confirmPassword: "", name: "", organization: "" });
@@ -174,18 +251,40 @@ function AuthPageContent() {
       // Clear hash from URL
       window.history.replaceState(null, '', '/auth');
       
-      // Redirect to dashboard after short delay
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1000);
+      toast({
+        title: "Wachtwoord ingesteld",
+        description: "Uw wachtwoord is succesvol ingesteld. U wordt doorgestuurd...",
+        duration: 2000,
+      });
+
+      // Wait a moment for the session to be fully established, then redirect
+      // Also trigger a refresh of the auth state
+      setTimeout(async () => {
+        // Verify session is still valid before redirecting
+        const { data: finalSession } = await supabase.auth.getSession();
+        if (finalSession?.session) {
+          router.push("/dashboard");
+          // Force a page reload to ensure auth context is updated
+          router.refresh();
+        } else {
+          toast({
+            title: "Fout",
+            description: "Kon sessie niet verifiëren. Probeer opnieuw in te loggen.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          setIsSubmitting(false);
+        }
+      }, 2000);
     } catch (error: any) {
       console.error("Error setting password:", error);
       toast({
         title: "Er is een fout opgetreden",
-        description: "Probeer het opnieuw of ververs de pagina.",
+        description: error.message || "Probeer het opnieuw of ververs de pagina.",
         variant: "destructive",
       });
       setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -334,11 +433,23 @@ function AuthPageContent() {
                   <Input
                     id="invite-email"
                     type="email"
-                    value={formData.email}
-                    disabled
-                    className="pl-10 bg-muted text-foreground disabled:text-foreground disabled:opacity-100"
+                    value={formData.email || ""}
+                    disabled={!!formData.email}
+                    className={`pl-10 bg-muted text-foreground disabled:text-foreground ${formData.email ? 'disabled:opacity-100' : 'disabled:opacity-70'}`}
+                    placeholder={formData.email ? "" : "Laden..."}
+                    onChange={(e) => {
+                      // Allow manual entry if email wasn't auto-loaded
+                      if (!formData.email) {
+                        setFormData(prev => ({ ...prev, email: e.target.value }));
+                      }
+                    }}
                   />
                 </div>
+                {!formData.email && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Email wordt geladen... Als deze niet verschijnt, vul deze dan handmatig in.
+                  </p>
+                )}
               </div>
             )}
             
