@@ -156,11 +156,12 @@ function AuthPageContent() {
     const loadEmail = async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user?.email) {
+        const emailFromSession = sessionData?.session?.user?.email;
+        if (emailFromSession && typeof emailFromSession === 'string') {
           setFormData(prev => {
             // Only update if email is still empty
             if (!prev.email) {
-              return { ...prev, email: sessionData.session.user.email };
+              return { ...prev, email: emailFromSession };
             }
             return prev;
           });
@@ -169,11 +170,12 @@ function AuthPageContent() {
         
         // Try getUser() as well
         const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user?.email) {
+        const emailFromUser = userData?.user?.email;
+        if (emailFromUser && typeof emailFromUser === 'string') {
           setFormData(prev => {
             // Only update if email is still empty
             if (!prev.email) {
-              return { ...prev, email: userData.user.email };
+              return { ...prev, email: emailFromUser };
             }
             return prev;
           });
