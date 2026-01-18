@@ -347,9 +347,15 @@ def _retrieve_internal(query: str, organization_id: str = None, trace=None, trac
             if org_doc_ids:
                 # Extract meaningful keywords from query (remove common words)
                 # First, extract component codes and technical identifiers (these are important even if short)
-                # Patterns: "8293Q2", "Q302.0", "2RSP02", "-8293U2", etc.
-                component_codes = re.findall(r'\b-?\d+[A-Za-z]+\d*[A-Za-z]*\b|\b[A-Za-z]+\d+[A-Za-z]?\d*\.?\d*\b|\b\d+[A-Za-z]\d+\b', query, re.IGNORECASE)
-                
+                   # Patterns: "8293Q2", "Q302.0", "2RSP02", "-8293U2", "E-102", "C-501", "W-912", etc.
+                # Match: component codes, foutcodes (E-102, C-501), and other technical codes
+                component_codes = re.findall(
+                    r'\b-?\d+[A-Za-z]+\d*[A-Za-z]*\b'  # "8293Q2", "-8293U2"
+                    r'|\b[A-Za-z]+\d+[A-Za-z]?\d*\.?\d*\b'  # "Q302.0", "I904.3"
+                    r'|\b\d+[A-Za-z]\d+\b'  # "2RSP02"
+                    r'|\b[A-Za-z]-?\d+\b'  # "E-102", "E102", "C-501", "C501", "W-912"
+                    r'|\b[A-Za-z]{1,2}-\d+\b'  # "MCH-002", "MCH-003" (2-3 letters followed by dash and numbers)
+                , query, re.IGNORECASE)
                 # Split query into words and search for each significant term (3+ characters)
                 query_words = re.findall(r'\b\w{3,}\b', query.lower())
                 # Remove common stopwords
