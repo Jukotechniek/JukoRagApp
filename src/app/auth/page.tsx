@@ -197,9 +197,10 @@ function AuthPageContent() {
   }, [isSettingPassword]); // Only depend on isSettingPassword, not formData.email
 
   // Redirect when authenticated - but NOT if user is setting password
-  // Don't wait for full user data load to prevent hanging
+  // After password is set, we manually handle redirect in handleSetPassword
   useEffect(() => {
-    if (supabaseUser && !isLoading && !isSettingPassword) {
+    // Only auto-redirect for regular login, not for password setting flow
+    if (supabaseUser && !isLoading && !isSettingPassword && !isSubmitting) {
       // Small delay to ensure state is settled, then redirect
       const redirectTimer = setTimeout(() => {
         toast({
@@ -211,46 +212,55 @@ function AuthPageContent() {
       
       return () => clearTimeout(redirectTimer);
     }
-  }, [supabaseUser, isLoading, isSettingPassword, router, toast]);
+  }, [supabaseUser, isLoading, isSettingPassword, isSubmitting, router, toast]);
 
   const handleSetPassword = async () => {
-    // Validate email is present
-    if (!formData.email || !formData.email.trim()) {
-      toast({
-        title: "Email ontbreekt",
-        description: "Vul uw emailadres in om door te gaan.",
-        variant: "destructive",
-      });
+    // Safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      console.warn("handleSetPassword timeout - resetting states");
       setIsLoading(false);
       setIsSubmitting(false);
-      return;
-    }
-    
-    // Validate passwords match
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Wachtwoorden komen niet overeen",
-        description: "Beide wachtwoordvelden moeten hetzelfde zijn.",
-        variant: "destructive",
-      });
-      setIsLoading(false);
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Validate password length
-    if (formData.password.length < 8) {
-      toast({
-        title: "Wachtwoord te kort",
-        description: "Wachtwoord moet minimaal 8 tekens lang zijn.",
-        variant: "destructive",
-      });
-      setIsLoading(false);
-      setIsSubmitting(false);
-      return;
-    }
+    }, 15000); // 15 seconds max
 
     try {
+      // Validate email is present
+      if (!formData.email || !formData.email.trim()) {
+        clearTimeout(safetyTimeout);
+        toast({
+          title: "Email ontbreekt",
+          description: "Vul uw emailadres in om door te gaan.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Validate passwords match
+      if (formData.password !== formData.confirmPassword) {
+        clearTimeout(safetyTimeout);
+        toast({
+          title: "Wachtwoorden komen niet overeen",
+          description: "Beide wachtwoordvelden moeten hetzelfde zijn.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Validate password length
+      if (formData.password.length < 8) {
+        clearTimeout(safetyTimeout);
+        toast({
+          title: "Wachtwoord te kort",
+          description: "Wachtwoord moet minimaal 8 tekens lang zijn.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
       // Verify we have a session before updating password
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       
@@ -296,41 +306,54 @@ function AuthPageContent() {
         return;
       }
 
+      console.log("Password updated successfully for user:", data.user.id);
+
+      // Get fresh session after password update
+      const { data: freshSession, error: sessionCheckError } = await supabase.auth.getSession();
+      
+      if (sessionCheckError || !freshSession?.session) {
+        console.error("Session check failed after password update:", sessionCheckError);
+        toast({
+          title: "Fout",
+          description: "Kon sessie niet verifiëren na wachtwoord update.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Clear hash from URL first
+      window.history.replaceState(null, '', '/auth');
+      
+      toast({
+        title: "Wachtwoord ingesteld",
+        description: "Uw wachtwoord is succesvol ingesteld. Account wordt geactiveerd...",
+        duration: 3000,
+      });
+
       // Reset form data
       setFormData({ email: "", password: "", confirmPassword: "", name: "", organization: "" });
       
       // Reset setting password state
       setIsSettingPassword(false);
-      
-      // Clear hash from URL
-      window.history.replaceState(null, '', '/auth');
-      
-      toast({
-        title: "Wachtwoord ingesteld",
-        description: "Uw wachtwoord is succesvol ingesteld. U wordt doorgestuurd...",
-        duration: 2000,
-      });
 
-      // Wait a moment for the session to be fully established, then redirect
-      // Also trigger a refresh of the auth state
-      setTimeout(async () => {
-        // Verify session is still valid before redirecting
-        const { data: finalSession } = await supabase.auth.getSession();
-        if (finalSession?.session) {
-          router.push("/dashboard");
-          // Force a page reload to ensure auth context is updated
-          router.refresh();
-        } else {
-          toast({
-            title: "Fout",
-            description: "Kon sessie niet verifiëren. Probeer opnieuw in te loggen.",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          setIsSubmitting(false);
-        }
+      // Wait for auth state to propagate and user data to load
+      // The auth context's onAuthStateChange should trigger and load user data
+      console.log("Password set successfully, waiting for auth state to update...");
+      clearTimeout(safetyTimeout);
+      
+      // Reset states immediately so button is not disabled
+      setIsLoading(false);
+      setIsSubmitting(false);
+      
+      // Give auth context time to load user data, then redirect
+      setTimeout(() => {
+        console.log("Redirecting to dashboard...");
+        router.push("/dashboard");
       }, 2000);
     } catch (error: any) {
+      clearTimeout(safetyTimeout);
       console.error("Error setting password:", error);
       toast({
         title: "Er is een fout opgetreden",
@@ -360,8 +383,10 @@ function AuthPageContent() {
 
     try {
       if (isSettingPassword) {
-        await handleSetPassword();
-        clearTimeout(safetyTimeout);
+        // handleSetPassword manages its own timeout, but clear this one too
+        await handleSetPassword().finally(() => {
+          clearTimeout(safetyTimeout);
+        });
         return;
       }
 
