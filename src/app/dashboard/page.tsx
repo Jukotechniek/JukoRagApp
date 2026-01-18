@@ -24,6 +24,8 @@ import {
   Menu,
   Coins,
   Flag,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import OrganizationsView from "@/components/dashboard/OrganizationsView";
@@ -40,6 +42,7 @@ import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { sendChatMessageStream } from "@/lib/chat";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import {
   Dialog,
   DialogContent,
@@ -351,6 +354,45 @@ export default function DashboardPage() {
     menuItems.filter((item) => item.roles.includes(currentRole)),
     [menuItems, currentRole]
   );
+
+  // Speech Recognition
+  const handleSpeechResult = useCallback((text: string, isFinal: boolean) => {
+    if (isFinal) {
+      // Final result: set the complete text
+      setInputValue(text);
+    } else {
+      // Interim result: update with live transcription
+      setInputValue(text);
+    }
+  }, []);
+
+  const handleSpeechError = useCallback((error: string) => {
+    toast({
+      title: "Spraakherkenning fout",
+      description: error,
+      variant: "destructive",
+    });
+  }, [toast]);
+
+  const {
+    isListening,
+    isSupported: speechSupported,
+    toggleListening,
+    stopListening,
+  } = useSpeechRecognition({
+    language: 'nl-NL',
+    continuous: false,
+    interimResults: true,
+    onResult: handleSpeechResult,
+    onError: handleSpeechError,
+  });
+
+  // Stop listening when sending a message
+  useEffect(() => {
+    if (isSending && isListening) {
+      stopListening();
+    }
+  }, [isSending, isListening, stopListening]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !effectiveOrgId || !conversationId || isSending) return;
@@ -894,6 +936,25 @@ export default function DashboardPage() {
                     placeholder="Stel een vraag..."
                     className="flex-1 text-base lg:text-sm"
                   />
+                  {speechSupported && (
+                    <Button
+                      variant={isListening ? "destructive" : "outline"}
+                      size="icon"
+                      onClick={toggleListening}
+                      disabled={isSending}
+                      title={isListening ? "Stop opname" : "Start spraakherkenning"}
+                      className={`relative ${isListening ? "animate-pulse" : ""}`}
+                    >
+                      {isListening ? (
+                        <MicOff className="w-4 h-4" />
+                      ) : (
+                        <Mic className="w-4 h-4" />
+                      )}
+                      {isListening && (
+                        <span className="absolute inset-0 rounded-full bg-destructive/20 animate-ping" />
+                      )}
+                    </Button>
+                  )}
                   <Button variant="hero" size="icon" onClick={handleSendMessage} disabled={isSending || !inputValue.trim()}>
                     <Send className="w-4 h-4" />
                   </Button>
