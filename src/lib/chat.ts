@@ -106,7 +106,9 @@ export async function sendChatMessageStream(
     // Read streaming response
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';    if (!reader) {
+    let buffer = '';
+    
+    if (!reader) {
       throw new Error('No response body');
     }
 

@@ -39,6 +39,7 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
+import { sendChatMessageStream } from "@/lib/chat";
 
 interface Message {
   id: string;
@@ -392,8 +393,6 @@ export default function DashboardPage() {
       let streamingMessageId: string | null = null;
       
       try {
-        const { sendChatMessageStream } = await import('@/lib/chat');
-        
         // Create a temporary streaming message
         const tempStreamingMessage: Message = {
           id: `streaming-${Date.now()}`,
