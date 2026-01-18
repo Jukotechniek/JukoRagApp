@@ -381,7 +381,7 @@ export default function DashboardPage() {
     stopListening,
   } = useSpeechRecognition({
     language: 'nl-NL',
-    continuous: false,
+    continuous: true,
     interimResults: true,
     onResult: handleSpeechResult,
     onError: handleSpeechError,
@@ -943,7 +943,7 @@ export default function DashboardPage() {
                       onClick={toggleListening}
                       disabled={isSending}
                       title={isListening ? "Stop opname" : "Start spraakherkenning"}
-                      className={`relative ${isListening ? "animate-pulse" : ""}`}
+                      className="relative"
                     >
                       {isListening ? (
                         <MicOff className="w-4 h-4" />
@@ -951,7 +951,7 @@ export default function DashboardPage() {
                         <Mic className="w-4 h-4" />
                       )}
                       {isListening && (
-                        <span className="absolute inset-0 rounded-full bg-destructive/20 animate-ping" />
+                        <span className="absolute inset-0 rounded-full bg-destructive/10" />
                       )}
                     </Button>
                   )}
