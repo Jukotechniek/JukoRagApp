@@ -97,15 +97,19 @@ function AuthPageContent() {
                 userEmail = sessionData?.session?.user?.email;
               }
               
+              // If still no email, try getUser() as a last resort
+              if (!userEmail) {
+                const { data: userData } = await supabase.auth.getUser();
+                userEmail = userData?.user?.email;
+              }
+              
               if (userEmail) {
+                console.log("Email loaded successfully:", userEmail);
                 setFormData(prev => ({ ...prev, email: userEmail }));
               } else {
-                console.error("No email found in user data");
-                toast({
-                  title: "Fout",
-                  description: "Kon email niet laden. Probeer de link opnieuw.",
-                  variant: "destructive",
-                });
+                console.error("No email found in user data. Available data:", data);
+                // Don't show error toast, just let user fill it manually
+                // The field will be editable
               }
             }).catch((error) => {
               console.error("Error in setSession:", error);
@@ -141,6 +145,54 @@ function AuthPageContent() {
   }, [searchParams, toast]);
 
   const { login, register, supabaseUser } = useAuth();
+  
+  // Additional useEffect to load email after session is established
+  useEffect(() => {
+    if (!isSettingPassword || formData.email) {
+      return; // Don't run if not setting password or email already loaded
+    }
+    
+    // Try to get email from session after a short delay
+    const loadEmail = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user?.email) {
+          setFormData(prev => {
+            // Only update if email is still empty
+            if (!prev.email) {
+              return { ...prev, email: sessionData.session.user.email };
+            }
+            return prev;
+          });
+          return;
+        }
+        
+        // Try getUser() as well
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user?.email) {
+          setFormData(prev => {
+            // Only update if email is still empty
+            if (!prev.email) {
+              return { ...prev, email: userData.user.email };
+            }
+            return prev;
+          });
+        }
+      } catch (error) {
+        console.error("Error loading email in useEffect:", error);
+      }
+    };
+    
+    // Try immediately and also after delays to catch late-loading sessions
+    loadEmail();
+    const timeoutId = setTimeout(loadEmail, 500);
+    const timeoutId2 = setTimeout(loadEmail, 1500);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      clearTimeout(timeoutId2);
+    };
+  }, [isSettingPassword]); // Only depend on isSettingPassword, not formData.email
 
   // Redirect when authenticated - but NOT if user is setting password
   // Don't wait for full user data load to prevent hanging
@@ -434,15 +486,13 @@ function AuthPageContent() {
                     id="invite-email"
                     type="email"
                     value={formData.email || ""}
-                    disabled={!!formData.email}
-                    className={`pl-10 bg-muted text-foreground disabled:text-foreground ${formData.email ? 'disabled:opacity-100' : 'disabled:opacity-70'}`}
-                    placeholder={formData.email ? "" : "Laden..."}
+                    className="pl-10 bg-muted text-foreground"
+                    placeholder="voorbeeld@email.nl"
                     onChange={(e) => {
-                      // Allow manual entry if email wasn't auto-loaded
-                      if (!formData.email) {
-                        setFormData(prev => ({ ...prev, email: e.target.value }));
-                      }
+                      // Always allow manual entry - email field is always editable
+                      setFormData(prev => ({ ...prev, email: e.target.value }));
                     }}
+                    autoComplete="email"
                   />
                 </div>
                 {!formData.email && (
