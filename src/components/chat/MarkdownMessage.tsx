@@ -19,6 +19,7 @@ const PdfViewerDialog = dynamic(
 interface MarkdownMessageProps {
   content: string;
   className?: string;
+  organizationId?: string | null;
 }
 
 // Parse citation patterns like "(Bron: FILENAME.pdf, Pagina: NUMBER)" or variations
@@ -198,7 +199,7 @@ function remarkCitations() {
   };
 }
 
-export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProps) => {
+export const MarkdownMessage = ({ content, className = '', organizationId }: MarkdownMessageProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -208,11 +209,14 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
   const containerRef = useRef<HTMLDivElement>(null);
   const handleCitationClickRef = useRef<((filename: string, pageNumber: number) => Promise<void>) | null>(null);
 
+  // Use provided organizationId or fall back to user's organization_id
+  const effectiveOrgId = organizationId ?? user?.organization_id ?? null;
+
   const handleCitationClick = useCallback(async (filename: string, pageNumber: number) => {
     try {
       // pageNumber is the page_number_footer from the citation
       // We need to convert it to actual_page
-      const result = await getDocumentWithSignedUrl(filename, pageNumber, user?.organization_id || null);
+      const result = await getDocumentWithSignedUrl(filename, pageNumber, effectiveOrgId);
       
       if (!result) {
         toast({
@@ -236,7 +240,7 @@ export const MarkdownMessage = ({ content, className = '' }: MarkdownMessageProp
         variant: 'destructive',
       });
     }
-  }, [user?.organization_id, toast]);
+  }, [effectiveOrgId, toast]);
 
   // Attach click handlers to citation links after render
   // Initialize ref immediately when callback is created

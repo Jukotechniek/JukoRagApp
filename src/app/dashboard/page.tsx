@@ -798,7 +798,7 @@ export default function DashboardPage() {
                     >
                       {message.role === "assistant" ? (
                         message.content ? (
-                          <MarkdownMessage content={message.content} />
+                          <MarkdownMessage content={message.content} organizationId={effectiveOrgId} />
                         ) : (
                           <div className="flex items-center gap-1.5 py-1">
                             <span className="text-muted-foreground text-base md:text-sm">Denken</span>
