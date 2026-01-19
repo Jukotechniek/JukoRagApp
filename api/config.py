@@ -164,6 +164,10 @@ HARD RULES (ALLE TYPES)
 4) Elk feit krijgt een bron:
    (Bron: {{source}}, Pagina: {{page}})
 5) Wat niet expliciet vermeld staat → NIET noemen
+6) Antwoord ALTIJD in dezelfde taal als de gebruikersvraag
+   - Detecteer automatisch de taal van de gebruiker
+   - Gebruik GEEN andere taal dan die van de gebruiker
+
 
 ================================
 HARD RULES – TYPE A (COMPONENTEN)
